@@ -1,0 +1,59 @@
+name: 📋 Task
+description: Implementation task from stage-map
+title: "[TASK] <M#-Slice> Short description"
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Slice:** M0 / M1 / M2 / M3 / M4 / M5 / M6
+        **Stage-map ref:** Link to stage-map section
+  - type: dropdown
+    id: milestone
+    attributes:
+      label: Milestone
+      options:
+        - M0 Walking Skeleton
+        - M1 Auth & Room CRUD
+        - M2 Join/Leave + Presence
+        - M3 Listener Audio
+        - M4 Speaker Publishing
+        - M5 Moderation & Queue
+        - M6 Reconnection & Hardening
+    validations: { required: true }
+  - type: input
+    id: slice
+    attributes:
+      label: Slice ID
+      placeholder: "e.g., M0-03, M2-01"
+    validations: { required: true }
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      placeholder: What needs to be done?
+    validations: { required: true }
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Definition of Done
+      placeholder: |
+        - [ ] Criterion 1
+        - [ ] Criterion 2
+    validations: { required: true }
+  - type: textarea
+    id: technical
+    attributes:
+      label: Technical Notes
+      placeholder: API contracts, Redis keys, state transitions, SQL, etc.
+  - type: checkboxes
+    id: dod
+    attributes:
+      label: DoD Checklist (auto-checked when PR merged)
+      options:
+        - label: Code complete
+        - label: Unit tests pass
+        - label: Integration test added
+        - label: Docs updated (API / README)
+        - label: No lint/type errors
+        - label: Deployed to preview env

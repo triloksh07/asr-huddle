@@ -1,0 +1,35 @@
+name: 🐛 Bug Report
+title: "[BUG] <area> Short description"
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      placeholder: Clear description
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to...
+        2. Click...
+        3. See error...
+    validations: { required: true }
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Screenshots
+      render: shell
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [backend, frontend, media, infra, auth, redis, db, ci]
+    validations: { required: true }
