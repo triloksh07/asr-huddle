@@ -9,8 +9,12 @@
   "scripts": {
     "check-types": "tsc --noEmit"
   },
+  "dependencies": {
+    "ioredis": "^5.4.1"
+  },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "@types/ioredis": "^5.0.0"
   }
 }

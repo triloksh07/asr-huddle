@@ -1,5 +1,6 @@
 import { workerManager } from './sfuWorker.js';
 import { RoomRouterManager } from './roomRouterManager.js';
+import { SfuRedisSubscriber } from './redisSubscriber.js';
 import { CONFIG } from './config.js';
 
 async function main() {
@@ -10,8 +11,13 @@ async function main() {
 
   const routerManager = new RoomRouterManager();
 
+  const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+  const redisSubscriber = new SfuRedisSubscriber(routerManager, redisUrl);
+  await redisSubscriber.listen();
+
   process.on('SIGINT', async () => {
     console.log('Shutting down SFU Node...');
+    await redisSubscriber.close();
     await workerManager.close();
     process.exit(0);
   });
