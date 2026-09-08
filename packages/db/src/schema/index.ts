@@ -1,3 +1,3 @@
-export * from './users.js';
-export * from './rooms.js';
-export * from './sessions.js';
+export * from './users';
+export * from './rooms';
+export * from './sessions';
