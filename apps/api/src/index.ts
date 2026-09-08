@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer } from 'node:http';
-import { Server } from 'ws';
+// import { Server } from 'ws';
+import WebSocket, { WebSocketServer } from 'ws';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CONFIG } from './config.js';
@@ -24,7 +25,7 @@ async function main() {
   });
 
   const server = createServer(app);
-  const wss = new Server({ server, path: '/v1/ws' });
+  const wss = new WebSocketServer({ server, path: '/v1/ws' });
 
   const sfuClient = new SfuClient(CONFIG.redisUrl);
   const wsGateway = new WsGateway(wss, CONFIG.redisUrl, sfuClient);

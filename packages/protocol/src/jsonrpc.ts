@@ -34,10 +34,17 @@ export interface JsonRpcNotification<TParams = unknown> {
 }
 
 // Zod Schemas for Runtime Ingestion Validation
+// export const JoinRoomSchema = z.object({
+//   roomId: z.string().uuid(),
+//   sessionId: z.string().optional(),
+// });
 export const JoinRoomSchema = z.object({
-  roomId: z.string().uuid(),
-  sessionId: z.string().optional(),
+  roomId: z.string().min(1, 'roomId cannot be empty'),
+  userId: z.string().optional(),
+  displayName: z.string().optional(),
 });
+
+export type JoinRoomInput = z.infer<typeof JoinRoomSchema>;
 
 export const CreateTransportSchema = z.object({
   direction: z.enum(['send', 'recv']),

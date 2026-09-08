@@ -1,13 +1,13 @@
 import { Server, WebSocket } from 'ws';
-import {
-  JsonRpcRequest,
-  JsonRpcSuccessResponse,
-  JsonRpcErrorResponse,
+import { 
+  JsonRpcRequest, 
+  JsonRpcSuccessResponse, 
+  JsonRpcErrorResponse, 
   JSON_RPC_ERRORS,
   JoinRoomSchema,
   CreateTransportSchema,
   ProduceSchema,
-  ConsumeSchema,
+  ConsumeSchema
 } from '@repo/protocol';
 import { REDIS_KEYS } from '@repo/redis-models';
 import Redis from 'ioredis';
@@ -59,10 +59,7 @@ export class WsGateway {
     }, 15000);
   }
 
-  private async handleJsonRpcMessage(
-    ws: AuthenticatedWebSocket,
-    req: JsonRpcRequest
-  ): Promise<void> {
+  private async handleJsonRpcMessage(ws: AuthenticatedWebSocket, req: JsonRpcRequest): Promise<void> {
     if (req.jsonrpc !== '2.0' || !req.method || !req.id) {
       return this.sendError(ws, req.id || null, JSON_RPC_ERRORS.INVALID_REQUEST);
     }
@@ -72,50 +69,14 @@ export class WsGateway {
         case 'ping':
           return this.sendSuccess(ws, req.id, 'pong');
 
-        // case 'join_room': {
-        //   const parseResult = JoinRoomSchema.safeParse(req.params);
-        //   if (!parseResult.success) {
-        //     return this.sendError(ws, req.id, JSON_RPC_ERRORS.INVALID_PARAMS);
-        //   }
-
-        //   const { roomId } = parseResult.data;
-        //   const mockUserId = `user-${Math.floor(Math.random() * 1000)}`;
-        //   const mockSessionId = `sess-${Math.floor(Math.random() * 10000)}`;
-
-        //   ws.userId = mockUserId;
-        //   ws.roomId = roomId;
-        //   ws.sessionId = mockSessionId;
-        //   ws.role = 'listener';
-
-        //   // Track in Redis
-        //   await this.redis.sadd(REDIS_KEYS.roomParticipants(roomId), mockUserId);
-
-        //   // Get Router RTP Capabilities from SFU
-        //   const sfuRes = await this.sfuClient.sendCommand(CONFIG.targetSfuId, {
-        //     type: 'CREATE_ROUTER',
-        //     payload: { roomId }
-        //   });
-
-        //   return this.sendSuccess(ws, req.id, {
-        //     sessionId: mockSessionId,
-        //     userId: mockUserId,
-        //     role: ws.role,
-        //     sfuData: sfuRes
-        //   });
-        // }
         case 'join_room': {
           const parseResult = JoinRoomSchema.safeParse(req.params);
           if (!parseResult.success) {
-            // Log the exact Zod issue for instant debugging
-            console.error(
-              '[WS Gateway] Validation Error for join_room:',
-              parseResult.error.format()
-            );
             return this.sendError(ws, req.id, JSON_RPC_ERRORS.INVALID_PARAMS);
           }
 
           const { roomId } = parseResult.data;
-          const mockUserId = parseResult.data.userId || `user-${Math.floor(Math.random() * 1000)}`;
+          const mockUserId = `user-${Math.floor(Math.random() * 1000)}`;
           const mockSessionId = `sess-${Math.floor(Math.random() * 10000)}`;
 
           ws.userId = mockUserId;
@@ -126,17 +87,17 @@ export class WsGateway {
           // Track in Redis
           await this.redis.sadd(REDIS_KEYS.roomParticipants(roomId), mockUserId);
 
-          // Get Router RTP Capabilities from SFU via Redis RPC
+          // Get Router RTP Capabilities from SFU
           const sfuRes = await this.sfuClient.sendCommand(CONFIG.targetSfuId, {
             type: 'CREATE_ROUTER',
-            payload: { roomId },
+            payload: { roomId }
           });
 
           return this.sendSuccess(ws, req.id, {
             sessionId: mockSessionId,
             userId: mockUserId,
             role: ws.role,
-            sfuData: sfuRes,
+            sfuData: sfuRes
           });
         }
 
@@ -155,8 +116,8 @@ export class WsGateway {
             payload: {
               roomId: ws.roomId,
               userId: ws.userId,
-              direction: parseResult.data.direction,
-            },
+              direction: parseResult.data.direction
+            }
           });
 
           return this.sendSuccess(ws, req.id, transportRes);
@@ -179,8 +140,8 @@ export class WsGateway {
               transportId: parseResult.data.transportId,
               kind: parseResult.data.kind,
               rtpParameters: parseResult.data.rtpParameters,
-              userId: ws.userId,
-            },
+              userId: ws.userId
+            }
           });
 
           return this.sendSuccess(ws, req.id, produceRes);
@@ -203,8 +164,8 @@ export class WsGateway {
               transportId: parseResult.data.transportId,
               producerId: parseResult.data.producerId,
               rtpCapabilities: parseResult.data.rtpCapabilities,
-              userId: ws.userId,
-            },
+              userId: ws.userId
+            }
           });
 
           return this.sendSuccess(ws, req.id, consumeRes);
@@ -234,11 +195,7 @@ export class WsGateway {
     ws.send(JSON.stringify(response));
   }
 
-  private sendError(
-    ws: WebSocket,
-    id: string | number | null,
-    errorObj: { code: number; message: string }
-  ): void {
+  private sendError(ws: WebSocket, id: string | number | null, errorObj: { code: number; message: string }): void {
     const response: JsonRpcErrorResponse = {
       jsonrpc: '2.0',
       id,

@@ -4,20 +4,25 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch --loader ts-node/esm src/index.ts",
+    "dev-old": "node --watch --loader ts-node/esm src/index.ts",
+    "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
     "@repo/audio-config": "workspace:*",
+    "@repo/redis-models": "workspace:*",
     "@repo/sfu-contract": "workspace:*",
+    "dotenv": "^16.6.1",
+    "ioredis": "^5.4.1",
     "mediasoup": "^3.14.12"
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
     "@types/node": "^20.14.10",
     "ts-node": "^10.9.2",
+    "tsx": "^4.16.2",
     "typescript": "^5.5.4"
   }
 }
