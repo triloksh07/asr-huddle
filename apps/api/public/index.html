@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SFU WebRTC Multi-Participant Test Client</title>
+    <style>
+      body {
+        font-family: monospace;
+        padding: 20px;
+        background: #121212;
+        color: #00ff66;
+      }
+      .card {
+        border: 1px solid #333;
+        padding: 15px;
+        margin-bottom: 15px;
+        border-radius: 6px;
+        background: #1a1a1a;
+      }
+      button {
+        background: #00ff66;
+        color: #000;
+        border: none;
+        padding: 8px 16px;
+        font-weight: bold;
+        cursor: pointer;
+      }
+      button:disabled {
+        background: #444;
+        color: #888;
+        cursor: not-allowed;
+      }
+      input {
+        background: #222;
+        border: 1px solid #444;
+        color: #fff;
+        padding: 6px;
+        width: 250px;
+      }
+    </style>
+  </head>
+  <body onload="init()">
+    <h1>WebRTC Control/Data Plane Sandbox</h1>
+    <div id="status" style="color: #ffaa00; margin-bottom: 20px">Connecting to WS...</div>
+
+    <div class="card">
+      <h3>1. Join Room</h3>
+      <input type="text" id="roomIdInput" value="test-room" placeholder="Room ID" />
+      <button onclick="joinRoom()">Join Room</button>
+    </div>
+
+    <div class="card">
+      <h3>2. Publish Audio (Speaker / Producer)</h3>
+      <button id="produceBtn" disabled onclick="produceAudio()">Start Microphone</button>
+      <p id="producerIdDisplay" style="color: #00ccff"></p>
+    </div>
+
+    <div class="card">
+      <h3>3. Listen to Audio (Listener / Consumer)</h3>
+      <input type="text" id="targetProducerId" placeholder="Paste Remote Producer ID here" />
+      <button id="consumeBtn" disabled onclick="consumeAudio()">Consume Remote Audio</button>
+      <audio id="remoteAudio" autoplay controls style="margin-top: 10px; display: block"></audio>
+    </div>
+
+    <script type="module" src="/dist/bundle.js"></script>
+  </body>
+</html>
