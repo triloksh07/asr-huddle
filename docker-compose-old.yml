@@ -1,0 +1,99 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: asr_huddle
+      POSTGRES_USER: huddle
+      POSTGRES_PASSWORD: huddle
+    ports: ['5432:5432']
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U huddle -d asr_huddle']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ['6379:6379']
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mediasoup:
+    build:
+      context: ./packages/backend
+      dockerfile: Dockerfile.mediasoup
+    image: asr-huddle/mediasoup-worker:latest
+    environment:
+      MEDIASOUP_WORKER_LOG_LEVEL: debug
+      MEDIASOUP_WORKER_LOG_TAGS: info,ice,dtls,rtp,srtp,rtcp
+    # Runs as sidecar — backend connects via IPC
+    # No ports exposed; backend spawns workers via child_process
+
+  coturn:
+    image: coturn/coturn:latest
+    command: >
+      -n
+      --lt-cred-mech
+      --realm=asrhuddle.dev
+      --user=huddle:turnsecret
+      --external-ip=$(PUBLIC_IP)
+      --min-port=49152
+      --max-port=65535
+    ports:
+      - '3478:3478/udp'
+      - '3478:3478/tcp'
+      - '5349:5349/tcp'
+    environment:
+      PUBLIC_IP: ${PUBLIC_IP:-auto}
+    profiles: ['turn'] # opt-in: docker compose --profile turn up
+
+  backend:
+    build:
+      context: ./packages/backend
+      dockerfile: Dockerfile.dev
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://huddle:huddle@postgres:5432/asr_huddle
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      JWT_ACCESS_TTL: 15m
+      JWT_REFRESH_TTL: 30d
+      MEDIASOUP_WORKER_COUNT: 4
+      PORT: 3000
+      WS_PATH: /v1/ws
+      CORS_ORIGIN: http://localhost:5173
+    ports: ['3000:3000']
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./packages/backend:/app
+      - /app/node_modules
+
+  frontend:
+    build:
+      context: ./packages/frontend
+      dockerfile: Dockerfile.dev
+    environment:
+      VITE_API_URL: http://localhost:3000
+      VITE_WS_URL: ws://localhost:3000/v1/ws
+    ports: ['5173:5173']
+    depends_on: [backend]
+    volumes:
+      - ./packages/frontend:/app
+      - /app/node_modules
+
+volumes:
+  pgdata:
+  redisdata:

@@ -1,9 +1,22 @@
-import { WebRtcTransport, DtlsParameters, RtpParameters, RtpCapabilities } from 'mediasoup/node/lib/types.js';
+import {
+  WebRtcTransport,
+  DtlsParameters,
+  RtpParameters,
+  RtpCapabilities,
+} from 'mediasoup/node/lib/types.js';
 import { SfuCommand, TransportOptions } from '@repo/sfu-contract';
 import { workerManager } from './sfuWorker.js';
 import { RoomMediaState } from './types.js';
 import { CONFIG } from './config.js';
 
+export const MEDIA_CODECS: RtpCodecCapability[] = [
+  {
+    kind: 'audio',
+    mimeType: 'audio/opus',
+    clockRate: 48000,
+    channels: 2,
+  },
+];
 export class RoomRouterManager {
   private rooms = new Map<string, RoomMediaState>();
 
@@ -58,6 +71,8 @@ export class RoomRouterManager {
   }
 
   private async getOrCreateRoom(roomId: string): Promise<RoomMediaState> {
+    console.log(`[SFU Node] [Router] Allocation requested for room: ${roomId}`);
+
     let room = this.rooms.get(roomId);
     if (!room) {
       const router = await workerManager.createRouter();
@@ -70,6 +85,11 @@ export class RoomRouterManager {
         userTransports: new Map(),
       };
       this.rooms.set(roomId, room);
+
+      console.log(
+        `[SFU Node] [Router] Created new router ${router.id} for room: ${roomId} with codecs:`,
+        MEDIA_CODECS
+      );
     }
     return room;
   }
@@ -121,7 +141,11 @@ export class RoomRouterManager {
     return { roomId, userId, transport: options };
   }
 
-  private async connectWebRtcTransport(roomId: string, transportId: string, dtlsParameters: DtlsParameters) {
+  private async connectWebRtcTransport(
+    roomId: string,
+    transportId: string,
+    dtlsParameters: DtlsParameters
+  ) {
     const room = this.rooms.get(roomId);
     if (!room) throw new Error(`Room ${roomId} not found`);
 
