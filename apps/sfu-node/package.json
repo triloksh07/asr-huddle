@@ -14,6 +14,8 @@
     "@repo/audio-config": "workspace:*",
     "@repo/redis-models": "workspace:*",
     "@repo/sfu-contract": "workspace:*",
+    "@repo/media-contract": "workspace:*",
+    "@repo/domain": "workspace:*",
     "dotenv": "^16.6.1",
     "ioredis": "^5.4.1",
     "mediasoup": "^3.14.12"
@@ -23,6 +25,7 @@
     "@types/node": "^20.14.10",
     "ts-node": "^10.9.2",
     "tsx": "^4.16.2",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "vitest": "^3.2.4"
   }
 }
