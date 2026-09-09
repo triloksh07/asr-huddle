@@ -1,8 +1,4 @@
 {
   "extends": "@repo/tsconfig/node.json",
-  "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "dist"
-  },
-  "include": ["src/**/*", "drizzle.config.ts"]
+  "include": ["src/**/*.ts"]
 }

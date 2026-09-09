@@ -1,10 +1,13 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import * as schema from './schema/index.js';
+import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
+import * as schema from "./schema.js";
 
-export function createDbClient(connectionString: string) {
-  const queryClient = postgres(connectionString);
-  return drizzle(queryClient, { schema });
+export type Database = ReturnType<typeof createDatabase>;
+
+export function createDatabase(databaseUrl: string) {
+  const client = postgres(databaseUrl);
+  return {
+    client,
+    db: drizzle(client, { schema }),
+  };
 }
-
-export type DatabaseInstance = ReturnType<typeof createDbClient>;
