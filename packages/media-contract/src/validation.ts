@@ -16,6 +16,7 @@ export const produceAudioSchema = z.object({
 });
 
 export const consumeAudioSchema = z.object({
+  roomId: z.string().min(1),
   participantId: z.string().min(1),
   participantSessionId: z.string().min(1),
   producerId: z.string().min(1),

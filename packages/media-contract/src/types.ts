@@ -50,6 +50,7 @@ export interface ProduceAudioResult {
 }
 
 export interface ConsumeAudioCommand {
+  roomId: RoomId;
   participantId: ParticipantId;
   participantSessionId: ParticipantSessionId;
   producerId: MediaProducerId;

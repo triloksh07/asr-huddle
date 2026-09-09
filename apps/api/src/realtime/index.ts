@@ -9,3 +9,4 @@ export * from "./commands/join-room.js";
 export * from "./commands/leave-room.js";
 export * from "./commands/request-speaker.js";
 export * from "./commands/cancel-speaker-request.js";
+export * from "./commands/media.js";
