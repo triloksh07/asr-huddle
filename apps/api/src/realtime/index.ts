@@ -3,6 +3,8 @@ export * from "./errors.js";
 export * from "./connection-registry.js";
 export * from "./command-router.js";
 export * from "./ws-session.js";
+export * from "./authenticated-connection.js";
+export * from "./ws-runtime.js";
 export * from "./commands/join-room.js";
 export * from "./commands/leave-room.js";
 export * from "./commands/request-speaker.js";
