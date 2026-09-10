@@ -19,6 +19,7 @@
     "@repo/protocol": "workspace:*",
     "@repo/redis-models": "workspace:*",
     "@repo/sfu-contract": "workspace:*",
+    "@repo/media-contract": "workspace:*",
     "@repo/state-machine": "workspace:*",
     "dotenv": "^16.6.1",
     "express": "^4.19.2",
