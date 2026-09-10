@@ -8,7 +8,8 @@
     "build": "tsc",
     "build:client": "esbuild public/client.js --bundle --outfile=public/dist/bundle.js --format=esm --sourcemap",
     "start": "node dist/index.js",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@repo/application": "workspace:*",

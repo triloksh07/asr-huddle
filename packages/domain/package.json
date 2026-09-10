@@ -14,7 +14,8 @@
   "scripts": {
     "build": "tsc",
     "check-types": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
