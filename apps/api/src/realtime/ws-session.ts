@@ -1,10 +1,7 @@
-import type { ConnectionId, UserId } from "@repo/domain";
-import { CommandRouter } from "./command-router.js";
-import { ConnectionRegistry } from "./connection-registry.js";
-import type {
-  RealtimeConnection,
-  RealtimeTransport,
-} from "./types.js";
+import type { ConnectionId, UserId } from '@repo/domain';
+import { CommandRouter } from './command-router.js';
+import { ConnectionRegistry } from './connection-registry.js';
+import type { RealtimeConnection, RealtimeTransport } from './types.js';
 
 export interface RealtimeSession {
   readonly connection: RealtimeConnection;
@@ -17,7 +14,7 @@ export function createRealtimeSession(
   userId: UserId,
   transport: RealtimeTransport,
   router: CommandRouter,
-  registry: ConnectionRegistry,
+  registry: ConnectionRegistry
 ): RealtimeSession {
   const connection: RealtimeConnection = {
     connectionId,
@@ -28,16 +25,13 @@ export function createRealtimeSession(
     connectedAt: new Date().toISOString(),
   };
 
-  registry.add({ ...connection, transport });
+  registry.add(Object.assign(connection, { transport }));
 
   return {
     connection,
 
     async receive(raw: unknown): Promise<void> {
-      const response = await router.dispatch(
-        { connection, transport },
-        raw,
-      );
+      const response = await router.dispatch({ connection, transport }, raw);
       await transport.send(response);
     },
 

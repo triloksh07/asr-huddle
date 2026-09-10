@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ParticipantId } from "@repo/domain";
+import type { ParticipantId, ParticipantSessionId } from "@repo/domain";
 import type { LeaveRoomUseCase } from "@repo/application";
 import type {
   RealtimeCommandContext,
@@ -7,6 +7,7 @@ import type {
   RealtimeEnvelope,
 } from "../types.js";
 import { realtimeErrors } from "../errors.js";
+import { clearRoomSessionBinding } from "../connection-context.js";
 
 const payloadSchema = z.object({});
 
@@ -21,14 +22,19 @@ export class LeaveRoomRealtimeCommand implements RealtimeCommandHandler {
   ): Promise<unknown> {
     payloadSchema.parse(envelope.payload);
 
-    if (!context.connection.participantId) {
-      throw realtimeErrors.invalidState("Connection is not attached to a participant.");
+    const { participantId, participantSessionId } = context.connection;
+    if (!participantId || !participantSessionId) {
+      throw realtimeErrors.invalidState(
+        "Connection is not attached to an active participant session.",
+      );
     }
 
     await this.useCase.execute({
-      participantId: context.connection.participantId as ParticipantId,
+      participantId: participantId as ParticipantId,
+      participantSessionId: participantSessionId as ParticipantSessionId,
     });
 
+    clearRoomSessionBinding(context.connection);
     return {};
   }
 }

@@ -11,8 +11,10 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@repo/application": "workspace:*",
     "@repo/audio-config": "workspace:*",
     "@repo/db": "workspace:*",
+    "@repo/domain": "workspace:*",
     "@repo/protocol": "workspace:*",
     "@repo/redis-models": "workspace:*",
     "@repo/sfu-contract": "workspace:*",
