@@ -150,16 +150,30 @@ export function markDisconnected(
   return { ...participant, status: 'DISCONNECTED', disconnectedAt };
 }
 
+export function markReconnected(participant: ParticipantState): ParticipantState {
+  if (participant.status === 'LEFT' || participant.status === 'REMOVED') {
+    throw new DomainError('INVALID_STATE', 'This participant cannot be reconnected.');
+  }
+  return { ...participant, status: 'CONNECTED', disconnectedAt: null };
+}
+
 export function markLeft(participant: ParticipantState, leftAt: Date): ParticipantState {
   if (participant.status === 'LEFT') return participant;
-  if (participant.status === 'REMOVED')
+  if (participant.status === 'REMOVED') {
     throw new DomainError('PARTICIPANT_REMOVED', 'A removed participant cannot leave again.');
+  }
   return { ...participant, status: 'LEFT', leftAt };
 }
 
 export function markRemoved(participant: ParticipantState, removedAt: Date): ParticipantState {
   if (participant.status === 'REMOVED') return participant;
-  return { ...participant, status: 'REMOVED', removedAt };
+  return {
+    ...participant,
+    status: 'REMOVED',
+    managementRole: 'NONE',
+    audioRole: 'LISTENER',
+    removedAt,
+  };
 }
 
 export function markSessionDisconnected(
@@ -169,6 +183,23 @@ export function markSessionDisconnected(
 ): ParticipantSessionState {
   if (session.disconnectedAt !== null) return session;
   return { ...session, disconnectedAt, recoverableUntil };
+}
+
+export function markSessionReconnected(
+  session: ParticipantSessionState,
+  connectionId: ConnectionId,
+  connectedAt: Date
+): ParticipantSessionState {
+  if (session.intentionalLeave) {
+    throw new DomainError('INVALID_STATE', 'An intentionally closed session cannot reconnect.');
+  }
+  return {
+    ...session,
+    connectionId,
+    connectedAt,
+    disconnectedAt: null,
+    recoverableUntil: null,
+  };
 }
 
 export function markSessionIntentionalLeave(
@@ -187,9 +218,10 @@ export function canRecoverParticipantSession(session: ParticipantSessionState, n
 }
 
 function ensureConnected(participant: ParticipantState): void {
-  if (participant.status !== 'CONNECTED')
+  if (participant.status !== 'CONNECTED') {
     throw new DomainError(
       'PARTICIPANT_NOT_CONNECTED',
       'This participant is not currently connected.'
     );
+  }
 }

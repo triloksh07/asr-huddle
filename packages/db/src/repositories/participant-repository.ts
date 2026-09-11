@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import type { ParticipantRepository } from "@repo/application";
 import type { ParticipantState } from "@repo/domain";
 import { participants } from "../schema.js";
@@ -12,7 +12,6 @@ export class PostgresParticipantRepository implements ParticipantRepository {
     const row = await this.database.query.participants.findFirst({
       where: eq(participants.id, participantId),
     });
-
     return row ? mapParticipant(row) : null;
   }
 
@@ -20,8 +19,17 @@ export class PostgresParticipantRepository implements ParticipantRepository {
     const rows = await this.database.query.participants.findMany({
       where: eq(participants.roomSessionId, roomSessionId),
     });
-
     return rows.map(mapParticipant);
+  }
+
+  async findByUserAndRoomSession(userId: string, roomSessionId: string) {
+    const row = await this.database.query.participants.findFirst({
+      where: and(
+        eq(participants.userId, userId),
+        eq(participants.roomSessionId, roomSessionId),
+      ),
+    });
+    return row ? mapParticipant(row) : null;
   }
 
   async save(participant: ParticipantState): Promise<void> {
