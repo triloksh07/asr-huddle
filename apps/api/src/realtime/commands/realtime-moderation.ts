@@ -22,7 +22,9 @@ function participantId(context: RealtimeCommandContext): string {
 
 function target(envelope: RealtimeEnvelope): string {
   const parsed = targetSchema.safeParse(envelope.payload);
-  if (!parsed.success) throw realtimeErrors.invalidState('Invalid moderation target payload.');
+  if (!parsed.success) {
+    throw realtimeErrors.invalidState('Invalid moderation target payload.');
+  }
   return parsed.data.targetParticipantId;
 }
 
@@ -53,7 +55,9 @@ export class SetSelfMuteRealtimeCommand implements RealtimeCommandHandler {
   constructor(private readonly useCase: SetSelfMute) {}
   handle(context: RealtimeCommandContext, envelope: RealtimeEnvelope) {
     const parsed = selfMuteSchema.safeParse(envelope.payload);
-    if (!parsed.success) throw realtimeErrors.invalidState('Invalid self-mute payload.');
+    if (!parsed.success) {
+      throw realtimeErrors.invalidState('Invalid self-mute payload.');
+    }
     return this.useCase.execute({
       participantId: participantId(context),
       muted: parsed.data.muted,

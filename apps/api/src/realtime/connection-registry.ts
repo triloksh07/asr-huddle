@@ -46,6 +46,17 @@ export class ConnectionRegistry {
     );
   }
 
+  async closeParticipant(
+    participantId: ParticipantId,
+    code = 4003,
+    reason = 'Removed from room'
+  ): Promise<void> {
+    const connection = this.getByParticipant(participantId);
+    if (!connection) return;
+    this.connections.delete(connection.connectionId);
+    await connection.transport.close(code, reason);
+  }
+
   remove(connectionId: ConnectionId): RegisteredConnection | null {
     const existing = this.connections.get(connectionId) ?? null;
     this.connections.delete(connectionId);
