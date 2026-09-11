@@ -3,14 +3,8 @@ import {
   type ParticipantId,
   type RoomSessionId,
   type SpeakerRequestId,
-} from "../shared.js";
-
-export type SpeakerRequestStatus =
-  | "PENDING"
-  | "APPROVED"
-  | "DENIED"
-  | "CANCELLED";
-
+} from '../shared.js';
+export type SpeakerRequestStatus = 'PENDING' | 'APPROVED' | 'DENIED' | 'CANCELLED';
 export type SpeakerRequestState = Readonly<{
   id: SpeakerRequestId;
   roomSessionId: RoomSessionId;
@@ -18,8 +12,8 @@ export type SpeakerRequestState = Readonly<{
   status: SpeakerRequestStatus;
   createdAt: Date;
   resolvedAt: Date | null;
+  resolvedByParticipantId: ParticipantId | null;
 }>;
-
 export function createSpeakerRequest(input: {
   id: SpeakerRequestId;
   roomSessionId: RoomSessionId;
@@ -27,51 +21,43 @@ export function createSpeakerRequest(input: {
   createdAt: Date;
 }): SpeakerRequestState {
   return {
-    id: input.id,
-    roomSessionId: input.roomSessionId,
-    participantId: input.participantId,
-    status: "PENDING",
-    createdAt: input.createdAt,
+    ...input,
+    status: 'PENDING',
     resolvedAt: null,
+    resolvedByParticipantId: null,
   };
 }
-
 export function approveSpeakerRequest(
-  request: SpeakerRequestState,
-  resolvedAt: Date,
+  r: SpeakerRequestState,
+  at: Date,
+  by: ParticipantId
 ): SpeakerRequestState {
-  return resolve(request, "APPROVED", resolvedAt);
+  return resolve(r, 'APPROVED', at, by);
 }
-
 export function denySpeakerRequest(
-  request: SpeakerRequestState,
-  resolvedAt: Date,
+  r: SpeakerRequestState,
+  at: Date,
+  by: ParticipantId
 ): SpeakerRequestState {
-  return resolve(request, "DENIED", resolvedAt);
+  return resolve(r, 'DENIED', at, by);
 }
-
 export function cancelSpeakerRequest(
-  request: SpeakerRequestState,
-  resolvedAt: Date,
+  r: SpeakerRequestState,
+  at: Date,
+  by?: ParticipantId
 ): SpeakerRequestState {
-  return resolve(request, "CANCELLED", resolvedAt);
+  return resolve(r, 'CANCELLED', at, by ?? null);
 }
-
 function resolve(
-  request: SpeakerRequestState,
-  status: Exclude<SpeakerRequestStatus, "PENDING">,
-  resolvedAt: Date,
-): SpeakerRequestState {
-  if (request.status !== "PENDING") {
+  r: SpeakerRequestState,
+  status: Exclude<SpeakerRequestStatus, 'PENDING'>,
+  at: Date,
+  by: ParticipantId | null
+) {
+  if (r.status !== 'PENDING')
     throw new DomainError(
-      "SPEAKER_REQUEST_ALREADY_RESOLVED",
-      "This speaker request has already been resolved.",
+      'SPEAKER_REQUEST_ALREADY_RESOLVED',
+      'This speaker request has already been resolved.'
     );
-  }
-
-  return {
-    ...request,
-    status,
-    resolvedAt,
-  };
+  return { ...r, status, resolvedAt: at, resolvedByParticipantId: by };
 }
