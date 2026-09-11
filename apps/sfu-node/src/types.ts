@@ -1,10 +1,10 @@
-import { Router, WebRtcTransport, Producer, Consumer } from 'mediasoup/node/lib/types.js';
+import { types } from 'mediasoup';
 
 export interface RoomMediaState {
   roomId: string;
-  router: Router;
-  transports: Map<string, WebRtcTransport>;
-  producers: Map<string, Producer>;
-  consumers: Map<string, Consumer>;
+  router: types.Router;
+  transports: Map<string, types.WebRtcTransport>;
+  producers: Map<string, types.Producer>;
+  consumers: Map<string, types.Consumer>;
   userTransports: Map<string, Set<string>>; // userId -> Set<transportId>
 }

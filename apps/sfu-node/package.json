@@ -13,13 +13,13 @@
   },
   "dependencies": {
     "@repo/audio-config": "workspace:*",
+    "@repo/domain": "workspace:*",
+    "@repo/media-contract": "workspace:*",
     "@repo/redis-models": "workspace:*",
     "@repo/sfu-contract": "workspace:*",
-    "@repo/media-contract": "workspace:*",
-    "@repo/domain": "workspace:*",
     "dotenv": "^16.6.1",
     "ioredis": "^5.4.1",
-    "mediasoup": "^3.14.12"
+    "mediasoup": "^3.26.0"
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",

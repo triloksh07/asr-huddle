@@ -1,10 +1,10 @@
 import * as mediasoup from 'mediasoup';
-import { Worker, Router } from 'mediasoup/node/lib/types.js';
+import { types } from 'mediasoup';
 import os from 'node:os';
 import { CONFIG } from './config.js';
 
 class SfuWorkerManager {
-  private workers: Worker[] = [];
+  private workers: types.Worker[] = [];
   private nextWorkerIdx = 0;
 
   async init(): Promise<void> {
@@ -26,7 +26,7 @@ class SfuWorkerManager {
     }
   }
 
-  getNextWorker(): Worker {
+  getNextWorker(): types.Worker {
     if (this.workers.length === 0) {
       throw new Error('No Mediasoup workers initialized');
     }
@@ -35,7 +35,7 @@ class SfuWorkerManager {
     return worker;
   }
 
-  async createRouter(): Promise<Router> {
+  async createRouter(): Promise<types.Router> {
     const worker = this.getNextWorker();
     return await worker.createRouter({ mediaCodecs: CONFIG.mediaCodecs });
   }

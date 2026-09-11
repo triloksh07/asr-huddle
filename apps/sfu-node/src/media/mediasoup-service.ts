@@ -5,22 +5,17 @@ import type {
   CreateRoomMediaContext,
   CreateTransportResult,
   JoinMediaContext,
+  MediaCapabilities,
   MediaProducerInfo,
   MediaService,
   MediaTransportId,
   ProduceAudioCommand,
   ProduceAudioResult,
-} from "@repo/media-contract";
-import type { ParticipantId, ParticipantSessionId } from "@repo/domain";
-import * as mediasoup from "mediasoup";
-import type {
-  Consumer,
-  Producer,
-  Router,
-  WebRtcTransport,
-  Worker,
-} from "mediasoup/types";
-import { MediaPlaneError } from "./errors.js";
+} from '@repo/media-contract';
+import type { ParticipantId, ParticipantSessionId } from '@repo/domain';
+import * as mediasoup from 'mediasoup';
+import type { Consumer, Producer, Router, WebRtcTransport, Worker } from 'mediasoup/types';
+import { MediaPlaneError } from './errors.js';
 
 interface ParticipantMedia {
   transports: Map<string, WebRtcTransport>;
@@ -43,12 +38,15 @@ export class MediasoupMediaService implements MediaService {
 
   constructor(private readonly options: MediasoupServiceOptions) {}
 
-  async createRouter(context: CreateRoomMediaContext) {
+  async createRouter(context: CreateRoomMediaContext): Promise<{
+    routerId: string;
+    rtpCapabilities: MediaCapabilities;
+  }> {
     const existing = this.rooms.get(context.roomId);
     if (existing) {
       return {
         routerId: existing.router.id,
-        rtpCapabilities: existing.router.rtpCapabilities,
+        rtpCapabilities: existing.router.rtpCapabilities as unknown as MediaCapabilities,
       };
     }
 
@@ -61,13 +59,13 @@ export class MediasoupMediaService implements MediaService {
       participants: new Map(),
     });
 
-    router.observer.on("close", () => {
+    router.observer.on('close', () => {
       this.rooms.delete(context.roomId);
     });
 
     return {
       routerId: router.id,
-      rtpCapabilities: router.rtpCapabilities,
+      rtpCapabilities: router.rtpCapabilities as unknown as MediaCapabilities,
     };
   }
 
@@ -76,11 +74,13 @@ export class MediasoupMediaService implements MediaService {
     const participant = this.getOrCreateParticipant(room, context.participantId);
 
     const transport = await room.router.createWebRtcTransport({
-      listenInfos: [{
-        protocol: "udp",
-        ip: "0.0.0.0",
-        announcedAddress: process.env.SFU_ANNOUNCED_ADDRESS,
-      }],
+      listenInfos: [
+        {
+          protocol: 'udp',
+          ip: '0.0.0.0',
+          announcedAddress: process.env.SFU_ANNOUNCED_ADDRESS,
+        },
+      ],
       enableUdp: true,
       enableTcp: true,
       preferUdp: true,
@@ -92,7 +92,7 @@ export class MediasoupMediaService implements MediaService {
 
     participant.transports.set(transport.id, transport);
 
-    transport.observer.on("close", () => {
+    transport.observer.on('close', () => {
       participant.transports.delete(transport.id);
     });
 
@@ -101,6 +101,7 @@ export class MediasoupMediaService implements MediaService {
       iceParameters: transport.iceParameters,
       iceCandidates: transport.iceCandidates,
       dtlsParameters: transport.dtlsParameters,
+      rtpCapabilities: room.router.rtpCapabilities as unknown as MediaCapabilities,
     };
   }
 
@@ -116,13 +117,13 @@ export class MediasoupMediaService implements MediaService {
 
     if (participant?.producers.size) {
       throw new MediaPlaneError(
-        "AUDIO_PRODUCER_ALREADY_EXISTS",
-        `Participant ${participantId} already has an audio producer.`,
+        'AUDIO_PRODUCER_ALREADY_EXISTS',
+        `Participant ${participantId} already has an audio producer.`
       );
     }
 
     const producer = await transport.produce({
-      kind: "audio",
+      kind: 'audio',
       rtpParameters: command.rtpParameters as never,
       appData: command.appData,
     });
@@ -130,32 +131,37 @@ export class MediasoupMediaService implements MediaService {
     const owner = this.findParticipantByTransport(transport.id);
     if (!owner) {
       producer.close();
-      throw new MediaPlaneError("MEDIA_OWNER_NOT_FOUND", "Producer owner could not be resolved.");
+      throw new MediaPlaneError('MEDIA_OWNER_NOT_FOUND', 'Producer owner could not be resolved.');
     }
 
     owner.producers.set(producer.id, producer);
-    producer.observer.on("close", () => owner.producers.delete(producer.id));
+    producer.observer.on('close', () => owner.producers.delete(producer.id));
 
     return { producerId: producer.id as never };
   }
 
   async consumeAudio(command: ConsumeAudioCommand): Promise<ConsumeAudioResult> {
-    const room = this.requireRoom(command as never);
+    const room = this.requireRoom(command.roomId);
     const participant = this.getOrCreateParticipant(room, command.participantId);
 
-    if (!room.router.canConsume({
-      producerId: command.producerId,
-      rtpCapabilities: command.rtpCapabilities as never,
-    })) {
+    if (
+      !room.router.canConsume({
+        producerId: command.producerId,
+        rtpCapabilities: command.rtpCapabilities as never,
+      })
+    ) {
       throw new MediaPlaneError(
-        "CANNOT_CONSUME",
-        "The participant's RTP capabilities cannot consume this producer.",
+        'CANNOT_CONSUME',
+        "The participant's RTP capabilities cannot consume this producer."
       );
     }
 
-    const transport = [...participant.transports.values()].find((item) => !item.closed);
+    const transport = [...participant.transports.values()].find(item => !item.closed);
     if (!transport) {
-      throw new MediaPlaneError("CONSUMER_TRANSPORT_NOT_FOUND", "No active WebRTC transport exists.");
+      throw new MediaPlaneError(
+        'CONSUMER_TRANSPORT_NOT_FOUND',
+        'No active WebRTC transport exists.'
+      );
     }
 
     const consumer = await transport.consume({
@@ -169,12 +175,12 @@ export class MediasoupMediaService implements MediaService {
     });
 
     participant.consumers.set(consumer.id, consumer);
-    consumer.observer.on("close", () => participant.consumers.delete(consumer.id));
+    consumer.observer.on('close', () => participant.consumers.delete(consumer.id));
 
     return {
       consumerId: consumer.id as never,
       producerId: command.producerId,
-      kind: "audio",
+      kind: 'audio',
       rtpParameters: consumer.rtpParameters,
     };
   }
@@ -185,12 +191,12 @@ export class MediasoupMediaService implements MediaService {
 
     for (const participant of room.participants.values()) {
       for (const producer of participant.producers.values()) {
-        if (!producer.closed && producer.kind === "audio") {
+        if (!producer.closed && producer.kind === 'audio') {
           result.push({
             producerId: producer.id as never,
             participantId: producer.appData.participantId as ParticipantId,
             participantSessionId: producer.appData.participantSessionId as ParticipantSessionId,
-            kind: "audio",
+            kind: 'audio',
           });
         }
       }
@@ -224,7 +230,10 @@ export class MediasoupMediaService implements MediaService {
   private requireRoom(roomId: string): RoomMedia {
     const room = this.rooms.get(roomId);
     if (!room) {
-      throw new MediaPlaneError("MEDIA_ROOM_NOT_FOUND", `No media router exists for room ${roomId}.`);
+      throw new MediaPlaneError(
+        'MEDIA_ROOM_NOT_FOUND',
+        `No media router exists for room ${roomId}.`
+      );
     }
     return room;
   }
@@ -249,7 +258,7 @@ export class MediasoupMediaService implements MediaService {
         if (transport) return transport;
       }
     }
-    throw new MediaPlaneError("TRANSPORT_NOT_FOUND", `Transport ${transportId} does not exist.`);
+    throw new MediaPlaneError('TRANSPORT_NOT_FOUND', `Transport ${transportId} does not exist.`);
   }
 
   private findParticipantByTransport(transportId: string): ParticipantMedia | null {

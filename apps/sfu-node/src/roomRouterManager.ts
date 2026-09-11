@@ -1,15 +1,19 @@
-import {
-  WebRtcTransport,
-  DtlsParameters,
-  RtpParameters,
-  RtpCapabilities,
-} from 'mediasoup/node/lib/types.js';
+import { types } from 'mediasoup';
 import { SfuCommand, TransportOptions } from '@repo/sfu-contract';
 import { workerManager } from './sfuWorker.js';
 import { RoomMediaState } from './types.js';
 import { CONFIG } from './config.js';
 
-export const MEDIA_CODECS: RtpCodecCapability[] = [
+// export const MEDIA_CODECS: RtpCodecCapability[] = [
+//   {
+//     kind: 'audio',
+//     mimeType: 'audio/opus',
+//     clockRate: 48000,
+//     channels: 2,
+//   },
+// ];
+
+export const MEDIA_CODECS: types.RouterRtpCodecCapability[] = [
   {
     kind: 'audio',
     mimeType: 'audio/opus',
@@ -17,6 +21,7 @@ export const MEDIA_CODECS: RtpCodecCapability[] = [
     channels: 2,
   },
 ];
+
 export class RoomRouterManager {
   private rooms = new Map<string, RoomMediaState>();
 
@@ -39,14 +44,14 @@ export class RoomRouterManager {
         return await this.connectWebRtcTransport(
           cmd.payload.roomId,
           cmd.payload.transportId,
-          cmd.payload.dtlsParameters as DtlsParameters
+          cmd.payload.dtlsParameters as types.DtlsParameters
         );
 
       case 'PRODUCE':
         return await this.produceAudio(
           cmd.payload.roomId,
           cmd.payload.transportId,
-          cmd.payload.rtpParameters as RtpParameters,
+          cmd.payload.rtpParameters as types.RtpParameters,
           cmd.payload.userId
         );
 
@@ -55,7 +60,7 @@ export class RoomRouterManager {
           cmd.payload.roomId,
           cmd.payload.transportId,
           cmd.payload.producerId,
-          cmd.payload.rtpCapabilities as RtpCapabilities,
+          cmd.payload.rtpCapabilities as types.RtpCapabilities,
           cmd.payload.userId
         );
 
@@ -115,7 +120,13 @@ export class RoomRouterManager {
     const room = await this.getOrCreateRoom(roomId);
 
     const transport = await room.router.createWebRtcTransport({
-      listenIps: [{ ip: CONFIG.listenIp, announcedIp: CONFIG.announcedIp }],
+      listenInfos: [
+        {
+          protocol: 'udp',
+          ip: CONFIG.listenHost,
+          announcedAddress: CONFIG.announcedIp,
+        },
+      ],
       enableUdp: true,
       enableTcp: true,
       preferUdp: true,
@@ -144,7 +155,7 @@ export class RoomRouterManager {
   private async connectWebRtcTransport(
     roomId: string,
     transportId: string,
-    dtlsParameters: DtlsParameters
+    dtlsParameters: types.DtlsParameters
   ) {
     const room = this.rooms.get(roomId);
     if (!room) throw new Error(`Room ${roomId} not found`);
@@ -159,7 +170,7 @@ export class RoomRouterManager {
   private async produceAudio(
     roomId: string,
     transportId: string,
-    rtpParameters: RtpParameters,
+    rtpParameters: types.RtpParameters,
     userId: string
   ) {
     const room = this.rooms.get(roomId);
@@ -187,7 +198,7 @@ export class RoomRouterManager {
     roomId: string,
     transportId: string,
     producerId: string,
-    rtpCapabilities: RtpCapabilities,
+    rtpCapabilities: types.RtpCapabilities,
     userId: string
   ) {
     const room = this.rooms.get(roomId);

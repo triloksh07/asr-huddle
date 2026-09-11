@@ -133,7 +133,7 @@ importers:
         specifier: ^5.4.1
         version: 5.11.1
       mediasoup:
-        specifier: ^3.14.12
+        specifier: ^3.26.0
         version: 3.26.0
     devDependencies:
       '@repo/tsconfig':
