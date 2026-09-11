@@ -7,6 +7,8 @@ export class ApplicationError extends Error {
       | "CONFLICT"
       | "CAPACITY_EXCEEDED"
       | "ROOM_ENDED"
+      | "ROOM_SESSION_ENDED"
+      | "INVALID_TARGET"
       | "INVALID_STATE",
     message: string,
   ) {
