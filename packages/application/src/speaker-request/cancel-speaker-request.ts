@@ -1,33 +1,30 @@
-import { cancelSpeakerRequest } from "@repo/domain";
-import { ApplicationError } from "../errors.js";
-import type {
-  ApplicationClock,
-  SpeakerRequestRepository,
-} from "../ports.js";
-
-export interface CancelSpeakerRequestCommand {
-  readonly requestId: string;
-  readonly participantId: string;
-}
-
+import { cancelSpeakerRequest } from '@repo/domain';
+import { ApplicationError } from '../errors.js';
+import type { ApplicationClock, EventPublisher, SpeakerRequestRepository } from '../ports.js';
 export class CancelSpeakerRequest {
   constructor(
-    private readonly requests: SpeakerRequestRepository,
-    private readonly clock: ApplicationClock,
+    private requests: SpeakerRequestRepository,
+    private clock: ApplicationClock,
+    private events?: EventPublisher
   ) {}
-
-  async execute(command: CancelSpeakerRequestCommand) {
-    const request = await this.requests.findById(command.requestId);
-    if (!request) {
-      throw new ApplicationError("NOT_FOUND", "Speaker request was not found.");
-    }
-
-    if (request.participantId !== command.participantId) {
-      throw new ApplicationError("FORBIDDEN", "Only the requesting participant can cancel this request.");
-    }
-
-    const cancelled = cancelSpeakerRequest(request, this.clock.now());
-    await this.requests.save(cancelled);
-    return cancelled;
+  async execute(c: { requestId: string; participantId: string }) {
+    const r = await this.requests.findById(c.requestId);
+    if (!r) throw new ApplicationError('NOT_FOUND', 'Speaker request was not found.');
+    if (r.participantId !== c.participantId)
+      throw new ApplicationError(
+        'FORBIDDEN',
+        'Only the requesting participant can cancel this request.'
+      );
+    const x = cancelSpeakerRequest(r, this.clock.now(), c.participantId as never);
+    await this.requests.save(x);
+    if (this.events)
+      await this.events.publish({
+        type: 'speaker.request.cancelled',
+        occurredAt: this.clock.now(),
+        roomSessionId: r.roomSessionId,
+        participantId: r.participantId,
+        payload: { requestId: r.id },
+      });
+    return x;
   }
 }
