@@ -1,5 +1,5 @@
-import type { BoundRoomSession, RealtimeConnectionContext } from "../connection-context";
-import { bindRoomSession } from "../connection-context";
+import type { BoundRoomSession, RealtimeConnectionContext } from "../connection-context.js";
+import { bindRoomSession } from "../connection-context.js";
 
 /**
  * Binds the authoritative participant/session returned by room.join to the

@@ -3,14 +3,16 @@ import type {
   ParticipantState,
   RoomSessionState,
   RoomState,
-  UserRecord,
-} from "@repo/application";
+} from '@repo/domain';
+
+import { UserRecord } from '@repo/application';
+
 import {
   participantSessionStatusEnum,
   participantStatusEnum,
   roomSessionStatusEnum,
   roomStatusEnum,
-} from "./schema.js";
+} from './schema.js';
 
 type UserRow = {
   id: string;
@@ -22,9 +24,9 @@ type UserRow = {
 type RoomRow = {
   id: string;
   hostUserId: string;
-  visibility: "PUBLIC" | "LINK_ONLY";
+  visibility: 'PUBLIC' | 'LINK_ONLY';
   durationMinutes: number;
-  status: "ACTIVE" | "ENDED";
+  status: 'ACTIVE' | 'ENDED';
   createdAt: Date;
   endedAt: Date | null;
 };
@@ -34,7 +36,7 @@ type RoomSessionRow = {
   roomId: string;
   startedAt: Date;
   expiresAt: Date;
-  status: "ACTIVE" | "ENDED";
+  status: 'ACTIVE' | 'ENDED';
   expiryWarningIssuedAt: Date | null;
   endedAt: Date | null;
 };
@@ -44,9 +46,9 @@ type ParticipantRow = {
   roomId: string;
   roomSessionId: string;
   userId: string;
-  managementRole: "HOST" | "CO_HOST" | "NONE";
-  audioRole: "SPEAKER" | "LISTENER";
-  status: "CONNECTED" | "DISCONNECTED" | "LEFT" | "REMOVED";
+  managementRole: 'HOST' | 'CO_HOST' | 'NONE';
+  audioRole: 'SPEAKER' | 'LISTENER';
+  status: 'CONNECTED' | 'DISCONNECTED' | 'LEFT' | 'REMOVED';
   joinedAt: Date;
   disconnectedAt: Date | null;
   leftAt: Date | null;
@@ -74,10 +76,10 @@ export function mapUser(row: UserRow): UserRecord {
 
 export function mapRoom(row: RoomRow): RoomState {
   return {
-    id: row.id as RoomState["id"],
-    hostUserId: row.hostUserId as RoomState["hostUserId"],
+    id: row.id as RoomState['id'],
+    hostUserId: row.hostUserId as RoomState['hostUserId'],
     visibility: row.visibility,
-    durationMinutes: row.durationMinutes as RoomState["durationMinutes"],
+    durationMinutes: row.durationMinutes as RoomState['durationMinutes'],
     status: row.status,
     createdAt: row.createdAt,
     endedAt: row.endedAt,
@@ -86,8 +88,8 @@ export function mapRoom(row: RoomRow): RoomState {
 
 export function mapRoomSession(row: RoomSessionRow): RoomSessionState {
   return {
-    id: row.id as RoomSessionState["id"],
-    roomId: row.roomId as RoomSessionState["roomId"],
+    id: row.id as RoomSessionState['id'],
+    roomId: row.roomId as RoomSessionState['roomId'],
     startedAt: row.startedAt,
     expiresAt: row.expiresAt,
     status: row.status,
@@ -98,10 +100,10 @@ export function mapRoomSession(row: RoomSessionRow): RoomSessionState {
 
 export function mapParticipant(row: ParticipantRow): ParticipantState {
   return {
-    id: row.id as ParticipantState["id"],
-    roomId: row.roomId as ParticipantState["roomId"],
-    roomSessionId: row.roomSessionId as ParticipantState["roomSessionId"],
-    userId: row.userId as ParticipantState["userId"],
+    id: row.id as ParticipantState['id'],
+    roomId: row.roomId as ParticipantState['roomId'],
+    roomSessionId: row.roomSessionId as ParticipantState['roomSessionId'],
+    userId: row.userId as ParticipantState['userId'],
     managementRole: row.managementRole,
     audioRole: row.audioRole,
     status: row.status,
@@ -112,13 +114,11 @@ export function mapParticipant(row: ParticipantRow): ParticipantState {
   };
 }
 
-export function mapParticipantSession(
-  row: ParticipantSessionRow,
-): ParticipantSessionState {
+export function mapParticipantSession(row: ParticipantSessionRow): ParticipantSessionState {
   return {
-    id: row.id as ParticipantSessionState["id"],
-    participantId: row.participantId as ParticipantSessionState["participantId"],
-    connectionId: row.connectionId as ParticipantSessionState["connectionId"],
+    id: row.id as ParticipantSessionState['id'],
+    participantId: row.participantId as ParticipantSessionState['participantId'],
+    connectionId: row.connectionId as ParticipantSessionState['connectionId'],
     connectedAt: row.connectedAt,
     disconnectedAt: row.disconnectedAt,
     intentionalLeave: row.intentionalLeave === 1,

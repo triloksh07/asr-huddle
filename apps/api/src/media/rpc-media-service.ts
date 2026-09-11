@@ -11,6 +11,7 @@ import type {
   ProduceAudioResult,
   // CreateRoomMediaResult,
   ConsumeAudioResult,
+  MediaCapabilities,
 } from '@repo/media-contract';
 import { mediaRpcMethods } from '@repo/media-contract';
 import { MediaControlError } from './media-errors.js';
@@ -30,9 +31,19 @@ export class RpcMediaService implements MediaService {
     this.timeoutMs = options.requestTimeoutMs ?? 5000;
   }
 
-  createRouter(context: CreateRoomMediaContext) {
-    // return this.call<CreateRoomMediaResult>(mediaRpcMethods.createRouter, context);
-    return this.call(mediaRpcMethods.createRouter, context);
+  // createRouter(context: CreateRoomMediaContext) {
+  //   // return this.call<CreateRoomMediaResult>(mediaRpcMethods.createRouter, context);
+  //   return this.call(mediaRpcMethods.createRouter, context);
+  // }
+
+  createRouter(context: CreateRoomMediaContext): Promise<{
+    routerId: string;
+    rtpCapabilities: MediaCapabilities;
+  }> {
+    return this.call<{
+      routerId: string;
+      rtpCapabilities: MediaCapabilities;
+    }>(mediaRpcMethods.createRouter, context);
   }
 
   createWebRtcTransport(context: JoinMediaContext): Promise<CreateTransportResult> {

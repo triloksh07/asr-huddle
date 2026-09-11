@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ParticipantId, RoomId, UserId } from "@repo/domain";
-import type { RequestSpeakerUseCase } from "@repo/application";
+import type { RequestSpeaker } from "@repo/application";
 import type {
   RealtimeCommandContext,
   RealtimeCommandHandler,
@@ -15,7 +15,7 @@ const payloadSchema = z.object({
 export class RequestSpeakerRealtimeCommand implements RealtimeCommandHandler {
   readonly type = "speaker.request";
 
-  constructor(private readonly useCase: RequestSpeakerUseCase) {}
+  constructor(private readonly useCase: RequestSpeaker) {}
 
   async handle(
     context: RealtimeCommandContext,
@@ -28,9 +28,9 @@ export class RequestSpeakerRealtimeCommand implements RealtimeCommandHandler {
     }
 
     return this.useCase.execute({
-      roomId: parsed.roomId as RoomId,
+      // roomId: parsed.roomId as RoomId,
       participantId: context.connection.participantId as ParticipantId,
-      userId: context.connection.userId as UserId,
+      // userId: context.connection.userId as UserId,
     });
   }
 }

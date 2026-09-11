@@ -1,10 +1,15 @@
 import { z } from 'zod';
-import type { RoomId, UserId } from '@repo/domain';
+import type {
+  ParticipantId,
+  ParticipantSessionId,
+  RoomId,
+  RoomSessionId,
+  UserId,
+} from '@repo/domain';
 import type { GetRoomSnapshot, JoinRoom } from '@repo/application';
 import type { RealtimeCommandContext, RealtimeCommandHandler, RealtimeEnvelope } from '../types.js';
 import { realtimeErrors } from '../errors.js';
-import { bindJoinedRoomSession } from './join-room-binding.js';
-import { RealtimeConnectionContext, } from '../connection-context.js';
+import { bindRoomSession, RealtimeConnectionContext } from '../connection-context.js';
 
 const payloadSchema = z.object({
   roomId: z.string().min(1),
@@ -31,10 +36,15 @@ export class JoinRoomRealtimeCommand implements RealtimeCommandHandler {
       connectionId: context.connection.connectionId,
     });
 
-    bindJoinedRoomSession(context.connection as unknown as RealtimeConnectionContext, result);
+    bindRoomSession(context.connection as unknown as RealtimeConnectionContext, {
+      roomId: result.roomId as RoomId,
+      roomSessionId: result.roomSessionId as RoomSessionId,
+      participantId: result.participantId as ParticipantId,
+      participantSessionId: result.participantSessionId as ParticipantSessionId,
+    });
 
     const snapshot = await this.getRoomSnapshot.execute({
-      roomId: result.roomId,
+      roomId: result.roomId as RoomId,
     });
 
     return { ...result, snapshot };
