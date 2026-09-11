@@ -1,4 +1,5 @@
 import type { MediaService } from "@repo/media-contract";
+import type { DisconnectRoom } from "@repo/application";
 import { CommandRouter } from "../realtime/command-router.js";
 import { ConnectionRegistry } from "../realtime/connection-registry.js";
 import {
@@ -16,6 +17,8 @@ import {
 
 export interface ApiRuntimeDependencies {
   media: MediaService;
+  disconnectRoom: DisconnectRoom;
+  disconnectRecoveryMs?: number;
 }
 
 export interface ApiRuntime {
@@ -44,6 +47,8 @@ export function createApiRuntime(
       router,
       connections,
       new RejectingRealtimeAuthenticator(),
+      dependencies.disconnectRoom,
+      dependencies.disconnectRecoveryMs ?? 15_000,
     ),
   };
 }
