@@ -6,6 +6,7 @@ import {
 import { ApplicationError } from "../errors.js";
 import type {
   ApplicationClock,
+  EventPublisher,
   ParticipantRepository,
   ParticipantSessionRepository,
 } from "../ports.js";
@@ -20,6 +21,7 @@ export class LeaveRoom {
     private readonly participants: ParticipantRepository,
     private readonly participantSessions: ParticipantSessionRepository,
     private readonly clock: ApplicationClock,
+    private readonly events: EventPublisher,
   ) {}
 
   async execute(command: LeaveRoomCommand): Promise<void> {
@@ -56,5 +58,19 @@ export class LeaveRoom {
 
     await this.participants.save(left);
     await this.participantSessions.save(closed);
+
+    await this.events.publish({
+      type: "participant.left",
+      occurredAt: now,
+      roomId: participant.roomId,
+      roomSessionId: participant.roomSessionId,
+      participantId: participant.id,
+      participantSessionId: participantSession.id,
+      userId: participant.userId,
+      payload: {
+        participantId: participant.id,
+        participantSessionId: participantSession.id,
+      },
+    });
   }
 }

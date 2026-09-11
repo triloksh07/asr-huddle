@@ -1,12 +1,53 @@
-import type { ConnectionId, ParticipantId, ParticipantSessionId, RoomId, UserId } from "@repo/domain";
+import type {
+  ConnectionId,
+  ParticipantId,
+  ParticipantSessionId,
+  RoomId,
+  RoomSessionId,
+  UserId,
+} from "@repo/domain";
 
 export interface RealtimeConnection {
-  connectionId: ConnectionId;
-  userId: UserId;
+  readonly connectionId: ConnectionId;
+  readonly userId: UserId;
   participantId: ParticipantId | null;
   participantSessionId: ParticipantSessionId | null;
   roomId: RoomId | null;
-  connectedAt: string;
+  roomSessionId: RoomSessionId | null;
+  readonly connectedAt: string;
+}
+
+export interface BoundRoomSession {
+  readonly roomId: RoomId;
+  readonly roomSessionId: RoomSessionId;
+  readonly participantId: ParticipantId;
+  readonly participantSessionId: ParticipantSessionId;
+}
+
+export function bindRoomSession(
+  connection: RealtimeConnection,
+  binding: BoundRoomSession,
+): void {
+  if (
+    connection.roomId !== null ||
+    connection.roomSessionId !== null ||
+    connection.participantId !== null ||
+    connection.participantSessionId !== null
+  ) {
+    throw new Error("REALTIME_SESSION_ALREADY_BOUND");
+  }
+
+  connection.roomId = binding.roomId;
+  connection.roomSessionId = binding.roomSessionId;
+  connection.participantId = binding.participantId;
+  connection.participantSessionId = binding.participantSessionId;
+}
+
+export function clearRoomSessionBinding(connection: RealtimeConnection): void {
+  connection.roomId = null;
+  connection.roomSessionId = null;
+  connection.participantId = null;
+  connection.participantSessionId = null;
 }
 
 export interface RealtimeEnvelope<TPayload = unknown> {
@@ -24,6 +65,11 @@ export interface RealtimeResponse<TPayload = unknown> {
     code: string;
     message: string;
   };
+}
+
+export interface RealtimeEvent<TPayload = unknown> {
+  type: string;
+  payload: TPayload;
 }
 
 export interface RealtimeTransport {

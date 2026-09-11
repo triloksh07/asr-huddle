@@ -1,5 +1,6 @@
 import {
   CreateRoom,
+  DisconnectRoom,
   EndRoom,
   GetRoomSnapshot,
   JoinRoom,
@@ -24,6 +25,7 @@ import { CommandRouter } from "../realtime/command-router.js";
 import { ConnectionRegistry } from "../realtime/connection-registry.js";
 import { JoinRoomRealtimeCommand } from "../realtime/commands/join-room.js";
 import { LeaveRoomRealtimeCommand } from "../realtime/commands/leave-room.js";
+import { RedisRealtimeEventFanout } from "../realtime/event-fanout.js";
 import { createRealtimeRuntime, type RealtimeRuntime } from "../realtime/ws-runtime.js";
 import { RedisEventPublisher } from "./event-publisher.js";
 
@@ -48,16 +50,16 @@ export interface ApiRuntime {
   readonly close: () => Promise<void>;
 }
 
-export async function createApiRuntime(config: ApiConfig = loadConfig()): Promise<ApiRuntime> {
+export async function createApiRuntime(
+  config: ApiConfig = loadConfig(),
+): Promise<ApiRuntime> {
   const database = createDatabase(config.databaseUrl);
   const redisUrl = new URL(config.redisUrl);
-
   const redis = createRedisClient({
     host: redisUrl.hostname,
     port: Number(redisUrl.port || 6379),
     password: redisUrl.password || undefined,
   });
-
   await redis.connect();
 
   const users = new PostgresUserRepository(database.db);
@@ -81,21 +83,36 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     participantSessions,
     ids,
     clock,
+    events,
   );
-  const leaveRoom = new LeaveRoom(participants, participantSessions, clock);
+  const leaveRoom = new LeaveRoom(participants, participantSessions, clock, events);
+  const disconnectRoom = new DisconnectRoom(
+    participants,
+    participantSessions,
+    clock,
+    events,
+  );
 
   const router = new CommandRouter();
   router.register(new JoinRoomRealtimeCommand(joinRoom, getRoomSnapshot));
   router.register(new LeaveRoomRealtimeCommand(leaveRoom));
 
   const registry = new ConnectionRegistry();
+  const eventFanout = new RedisRealtimeEventFanout(redis, registry);
+  await eventFanout.start();
 
   const authenticator =
     config.authMode === "development"
       ? new DevelopmentQueryAuthenticator(users)
       : new RejectingRealtimeAuthenticator();
 
-  const realtime = createRealtimeRuntime(router, registry, authenticator);
+  const realtime = createRealtimeRuntime(
+    router,
+    registry,
+    authenticator,
+    disconnectRoom,
+    config.participantDisconnectRecoveryMs,
+  );
 
   return {
     config,
@@ -104,6 +121,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     database,
     redis,
     close: async () => {
+      await eventFanout.close();
       await redis.quit();
       await database.client.end();
     },

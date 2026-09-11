@@ -1,7 +1,7 @@
-import type { IncomingMessage } from 'node:http';
-import type { ConnectionId, UserId } from '@repo/domain';
-import type { UserRepository } from '@repo/application';
-import type { RealtimeConnection, RealtimeTransport } from './types.js';
+import type { IncomingMessage } from "node:http";
+import type { ConnectionId, UserId } from "@repo/domain";
+import type { UserRepository } from "@repo/application";
+import type { RealtimeConnection, RealtimeTransport } from "./types.js";
 
 export interface AuthenticatedRealtimeConnection {
   connection: RealtimeConnection;
@@ -14,7 +14,7 @@ export interface RealtimeAuthenticator {
 
 export class RejectingRealtimeAuthenticator implements RealtimeAuthenticator {
   async authenticate(_: unknown): Promise<UserId> {
-    throw new Error('Realtime authentication is not configured.');
+    throw new Error("Realtime authentication is not configured.");
   }
 }
 
@@ -27,16 +27,16 @@ export class DevelopmentQueryAuthenticator implements RealtimeAuthenticator {
 
   async authenticate(request: unknown): Promise<UserId> {
     const incoming = request as IncomingMessage;
-    const url = new URL(incoming.url ?? '/', 'ws://localhost');
-    const value = url.searchParams.get('userId');
+    const url = new URL(incoming.url ?? "/", "ws://localhost");
+    const value = url.searchParams.get("userId");
 
     if (!value) {
-      throw new Error('Authentication requires ?userId=...');
+      throw new Error("Authentication requires ?userId=...");
     }
 
     const user = await this.users.findById(value);
     if (!user) {
-      throw new Error('Authenticated user was not found.');
+      throw new Error("Authenticated user was not found.");
     }
 
     return user.id as UserId;
@@ -46,7 +46,7 @@ export class DevelopmentQueryAuthenticator implements RealtimeAuthenticator {
 export function createAuthenticatedConnection(
   connectionId: ConnectionId,
   userId: UserId,
-  transport: RealtimeTransport
+  transport: RealtimeTransport,
 ): AuthenticatedRealtimeConnection {
   return {
     connection: {
@@ -55,6 +55,7 @@ export function createAuthenticatedConnection(
       participantId: null,
       participantSessionId: null,
       roomId: null,
+      roomSessionId: null,
       connectedAt: new Date().toISOString(),
     },
     transport,

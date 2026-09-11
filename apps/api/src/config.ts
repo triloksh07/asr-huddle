@@ -11,6 +11,14 @@ function required(name: string): string {
   return value;
 }
 
+function positiveInteger(value: string | undefined, fallback: number, name: string): number {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`${name} must be a non-negative integer.`);
+  }
+  return parsed;
+}
+
 export type AuthMode = "development" | "production";
 
 export interface ApiConfig {
@@ -18,6 +26,7 @@ export interface ApiConfig {
   readonly databaseUrl: string;
   readonly redisUrl: string;
   readonly authMode: AuthMode;
+  readonly participantDisconnectRecoveryMs: number;
 }
 
 export function loadConfig(): ApiConfig {
@@ -28,9 +37,14 @@ export function loadConfig(): ApiConfig {
   }
 
   return {
-    port: Number(process.env.PORT ?? 3000),
+    port: positiveInteger(process.env.PORT, 3000, "PORT"),
     databaseUrl: required("DATABASE_URL"),
     redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
     authMode,
+    participantDisconnectRecoveryMs: positiveInteger(
+      process.env.PARTICIPANT_DISCONNECT_RECOVERY_MS,
+      30_000,
+      "PARTICIPANT_DISCONNECT_RECOVERY_MS",
+    ),
   };
 }

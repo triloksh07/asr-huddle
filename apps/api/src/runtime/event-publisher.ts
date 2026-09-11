@@ -1,12 +1,11 @@
-import type { EventPublisher } from "@repo/application";
+import type { EventPublisher, DomainEvent } from "@repo/application";
 import type { Redis } from "ioredis";
-
-const EVENT_CHANNEL = "asr-huddle:events";
+import { REALTIME_EVENT_CHANNEL } from "../realtime/event-fanout.js";
 
 export class RedisEventPublisher implements EventPublisher {
   constructor(private readonly redis: Redis) {}
 
-  async publish(event: Parameters<EventPublisher["publish"]>[0]): Promise<void> {
-    await this.redis.publish(EVENT_CHANNEL, JSON.stringify(event));
+  async publish(event: DomainEvent): Promise<void> {
+    await this.redis.publish(REALTIME_EVENT_CHANNEL, JSON.stringify(event));
   }
 }

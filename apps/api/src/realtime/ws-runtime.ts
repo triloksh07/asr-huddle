@@ -1,4 +1,5 @@
 import type { ConnectionId } from "@repo/domain";
+import type { DisconnectRoom } from "@repo/application";
 import { randomUUID } from "node:crypto";
 import { CommandRouter } from "./command-router.js";
 import { ConnectionRegistry } from "./connection-registry.js";
@@ -8,6 +9,7 @@ import {
 } from "./authenticated-connection.js";
 import { createRealtimeSession } from "./ws-session.js";
 import type { RealtimeTransport } from "./types.js";
+import { clearRoomSessionBinding } from "./types.js";
 
 export interface WebSocketLike {
   send(data: string): void;
@@ -25,6 +27,8 @@ export function createRealtimeRuntime(
   router: CommandRouter,
   registry: ConnectionRegistry,
   authenticator: RealtimeAuthenticator,
+  disconnectRoom: DisconnectRoom,
+  disconnectRecoveryMs: number,
 ): RealtimeRuntime {
   return {
     async accept(socket, request): Promise<void> {
@@ -54,6 +58,36 @@ export function createRealtimeRuntime(
         registry,
       );
 
+      let lifecycleFinalized = false;
+
+      const finalizeConnection = async (): Promise<void> => {
+        if (lifecycleFinalized) return;
+        lifecycleFinalized = true;
+
+        const registered = registry.get(connectionId);
+        if (!registered) return;
+
+        const { participantId, participantSessionId } = registered;
+
+        if (participantId && participantSessionId) {
+          try {
+            await disconnectRoom.execute({
+              participantId,
+              participantSessionId,
+              recoverableForMs: disconnectRecoveryMs,
+            });
+          } catch (error) {
+            console.error(
+              `Failed to persist disconnect for connection ${connectionId}.`,
+              error,
+            );
+          }
+        }
+
+        clearRoomSessionBinding(registered);
+        registry.remove(connectionId);
+      };
+
       socket.on("message", async (data) => {
         try {
           const raw = typeof data === "string" ? JSON.parse(data) : data;
@@ -72,11 +106,11 @@ export function createRealtimeRuntime(
       });
 
       socket.on("close", () => {
-        registry.remove(connectionId);
+        void finalizeConnection();
       });
 
       socket.on("error", () => {
-        registry.remove(connectionId);
+        void finalizeConnection();
       });
     },
   };
