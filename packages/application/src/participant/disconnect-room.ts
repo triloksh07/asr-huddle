@@ -10,6 +10,13 @@ import type {
   ParticipantSessionRepository,
 } from "../ports.js";
 
+export interface HostDelegator {
+  execute(command: {
+    roomSessionId: string;
+    previousHostParticipantId: string;
+  }): Promise<unknown>;
+}
+
 export interface DisconnectRoomCommand {
   readonly participantId: string;
   readonly participantSessionId: string;
@@ -22,6 +29,7 @@ export class DisconnectRoom {
     private readonly participantSessions: ParticipantSessionRepository,
     private readonly clock: ApplicationClock,
     private readonly events: EventPublisher,
+    private readonly hostDelegator?: HostDelegator,
   ) {}
 
   async execute(command: DisconnectRoomCommand): Promise<void> {
@@ -33,12 +41,8 @@ export class DisconnectRoom {
     const session = await this.participantSessions.findById(
       command.participantSessionId,
     );
-
     if (!session) {
-      throw new ApplicationError(
-        "NOT_FOUND",
-        "Participant session was not found.",
-      );
+      throw new ApplicationError("NOT_FOUND", "Participant session was not found.");
     }
 
     if (session.participantId !== participant.id) {
@@ -72,5 +76,12 @@ export class DisconnectRoom {
         recoverableUntil: recoverableUntil.toISOString(),
       },
     });
+
+    if (participant.managementRole === "HOST") {
+      await this.hostDelegator?.execute({
+        roomSessionId: participant.roomSessionId,
+        previousHostParticipantId: participant.id,
+      });
+    }
   }
 }

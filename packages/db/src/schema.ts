@@ -9,6 +9,7 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+
 export const roomVisibilityEnum = pgEnum('room_visibility', ['PUBLIC', 'LINK_ONLY']);
 export const roomStatusEnum = pgEnum('room_status', ['ACTIVE', 'ENDED']);
 export const roomSessionStatusEnum = pgEnum('room_session_status', ['ACTIVE', 'ENDED']);
@@ -37,6 +38,7 @@ export const invitationStatusEnum = pgEnum('invitation_status', [
   'DECLINED',
   'CANCELLED',
 ]);
+
 export const users = pgTable(
   'users',
   {
@@ -49,6 +51,7 @@ export const users = pgTable(
   },
   t => ({ usersCreatedAtIdx: index('users_created_at_idx').on(t.createdAt) })
 );
+
 export const rooms = pgTable(
   'rooms',
   {
@@ -67,6 +70,7 @@ export const rooms = pgTable(
     roomsHostUserIdIdx: index('rooms_host_user_id_idx').on(t.hostUserId),
   })
 );
+
 export const roomSessions = pgTable(
   'room_sessions',
   {
@@ -93,6 +97,7 @@ export const roomSessions = pgTable(
       .where(sql`status = 'ACTIVE'`),
   })
 );
+
 export const participants = pgTable(
   'participants',
   {
@@ -113,6 +118,8 @@ export const participants = pgTable(
     disconnectedAt: timestamp('disconnected_at', { withTimezone: true }),
     leftAt: timestamp('left_at', { withTimezone: true }),
     removedAt: timestamp('removed_at', { withTimezone: true }),
+    selfMuted: integer('self_muted').notNull().default(0),
+    moderatorMuted: integer('moderator_muted').notNull().default(0),
   },
   t => ({
     participantsRoomSessionStatusIdx: index('participants_room_session_status_idx').on(
@@ -122,6 +129,7 @@ export const participants = pgTable(
     participantsUserIdIdx: index('participants_user_id_idx').on(t.userId),
   })
 );
+
 export const participantSessions = pgTable(
   'participant_sessions',
   {
@@ -146,6 +154,7 @@ export const participantSessions = pgTable(
     ),
   })
 );
+
 export const speakerRequests = pgTable(
   'speaker_requests',
   {
@@ -177,6 +186,7 @@ export const speakerRequests = pgTable(
       .where(sql`status = 'PENDING'`),
   })
 );
+
 export const invitations = pgTable(
   'invitations',
   {

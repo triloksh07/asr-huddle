@@ -31,7 +31,6 @@ export class PostgresParticipantRepository implements ParticipantRepository {
     });
     return row ? mapParticipant(row) : null;
   }
-
   async save(participant: ParticipantState): Promise<void> {
     await this.database
       .insert(participants)
@@ -47,6 +46,8 @@ export class PostgresParticipantRepository implements ParticipantRepository {
         disconnectedAt: participant.disconnectedAt,
         leftAt: participant.leftAt,
         removedAt: participant.removedAt,
+        selfMuted: participant.selfMuted ? 1 : 0,
+        moderatorMuted: participant.moderatorMuted ? 1 : 0,
       })
       .onConflictDoUpdate({
         target: participants.id,
@@ -57,6 +58,8 @@ export class PostgresParticipantRepository implements ParticipantRepository {
           disconnectedAt: participant.disconnectedAt,
           leftAt: participant.leftAt,
           removedAt: participant.removedAt,
+          selfMuted: participant.selfMuted ? 1 : 0,
+          moderatorMuted: participant.moderatorMuted ? 1 : 0,
         },
       });
   }

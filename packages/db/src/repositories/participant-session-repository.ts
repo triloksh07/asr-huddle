@@ -12,7 +12,6 @@ export class PostgresParticipantSessionRepository implements ParticipantSessionR
     const row = await this.database.query.participantSessions.findFirst({
       where: eq(participantSessions.id, sessionId),
     });
-
     return row ? mapParticipantSession(row) : null;
   }
 
@@ -23,7 +22,6 @@ export class PostgresParticipantSessionRepository implements ParticipantSessionR
         eq(participantSessions.status, "ACTIVE"),
       ),
     });
-
     return row ? mapParticipantSession(row) : null;
   }
 
@@ -51,7 +49,9 @@ export class PostgresParticipantSessionRepository implements ParticipantSessionR
       .onConflictDoUpdate({
         target: participantSessions.id,
         set: {
+          connectionId: session.connectionId,
           status,
+          connectedAt: session.connectedAt,
           disconnectedAt: session.disconnectedAt,
           intentionalLeave: session.intentionalLeave ? 1 : 0,
           recoverableUntil: session.recoverableUntil,

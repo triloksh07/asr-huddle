@@ -13,6 +13,7 @@ import type {
   ParticipantSessionRepository,
   RoomRepository,
   RoomSessionRepository,
+  UserRepository,
 } from '../ports.js';
 
 export interface ReconnectRoomCommand {
@@ -30,11 +31,13 @@ export interface ReconnectRoomResult {
   readonly participantSessionId: string;
   readonly managementRole: 'HOST' | 'CO_HOST' | 'NONE';
   readonly audioRole: 'SPEAKER' | 'LISTENER';
+  readonly selfMuted: boolean;
+  readonly moderatorMuted: boolean;
 }
 
 export class ReconnectRoom {
   constructor(
-    private readonly users: import('../ports.js').UserRepository,
+    private readonly users: UserRepository,
     private readonly rooms: RoomRepository,
     private readonly sessions: RoomSessionRepository,
     private readonly participants: ParticipantRepository,
@@ -45,17 +48,23 @@ export class ReconnectRoom {
 
   async execute(command: ReconnectRoomCommand): Promise<ReconnectRoomResult> {
     const user = await this.users.findById(command.userId);
-    if (!user) throw new ApplicationError('UNAUTHENTICATED', 'Authenticated user was not found.');
+    if (!user) {
+      throw new ApplicationError('UNAUTHENTICATED', 'Authenticated user was not found.');
+    }
 
     const room = await this.rooms.findById(command.roomId);
     if (!room) throw new ApplicationError('NOT_FOUND', 'Room was not found.');
 
     const roomSession = await this.sessions.findActiveByRoomId(command.roomId);
-    if (!roomSession) throw new ApplicationError('ROOM_ENDED', 'The room is not active.');
+    if (!roomSession) {
+      throw new ApplicationError('ROOM_ENDED', 'The room is not active.');
+    }
     assertRoomSessionActive(roomSession);
 
     const participant = await this.participants.findById(command.participantId);
-    if (!participant) throw new ApplicationError('NOT_FOUND', 'Participant was not found.');
+    if (!participant) {
+      throw new ApplicationError('NOT_FOUND', 'Participant was not found.');
+    }
 
     if (
       participant.roomId !== room.id ||
@@ -76,7 +85,9 @@ export class ReconnectRoom {
     }
 
     const session = await this.participantSessions.findById(command.participantSessionId);
-    if (!session) throw new ApplicationError('NOT_FOUND', 'Participant session was not found.');
+    if (!session) {
+      throw new ApplicationError('NOT_FOUND', 'Participant session was not found.');
+    }
 
     if (session.participantId !== participant.id) {
       throw new ApplicationError(
@@ -91,7 +102,7 @@ export class ReconnectRoom {
 
     const activeSession = await this.participantSessions.findActiveByParticipantId(participant.id);
     if (activeSession && activeSession.id !== session.id) {
-      throw new ApplicationError('CONFLICT', 'Participant already has an active session.');
+      throw new ApplicationError('CONFLICT', 'Participant already has another active session.');
     }
 
     const now = this.clock.now();
@@ -112,6 +123,11 @@ export class ReconnectRoom {
       payload: {
         participantId: participant.id,
         participantSessionId: session.id,
+        managementRole: reconnectedParticipant.managementRole,
+        audioRole: reconnectedParticipant.audioRole,
+        selfMuted: reconnectedParticipant.selfMuted,
+        moderatorMuted: reconnectedParticipant.moderatorMuted,
+        mediaRecoveryRequired: true,
       },
     });
 
@@ -122,6 +138,8 @@ export class ReconnectRoom {
       participantSessionId: session.id,
       managementRole: reconnectedParticipant.managementRole,
       audioRole: reconnectedParticipant.audioRole,
+      selfMuted: reconnectedParticipant.selfMuted,
+      moderatorMuted: reconnectedParticipant.moderatorMuted,
     };
   }
 }

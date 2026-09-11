@@ -4,9 +4,7 @@ import type {
   RoomSessionState,
   RoomState,
 } from '@repo/domain';
-
 import { UserRecord } from '@repo/application';
-
 import {
   participantSessionStatusEnum,
   participantStatusEnum,
@@ -20,7 +18,6 @@ type UserRow = {
   avatarUrl: string | null;
   bio: string | null;
 };
-
 type RoomRow = {
   id: string;
   hostUserId: string;
@@ -30,7 +27,6 @@ type RoomRow = {
   createdAt: Date;
   endedAt: Date | null;
 };
-
 type RoomSessionRow = {
   id: string;
   roomId: string;
@@ -40,7 +36,6 @@ type RoomSessionRow = {
   expiryWarningIssuedAt: Date | null;
   endedAt: Date | null;
 };
-
 type ParticipantRow = {
   id: string;
   roomId: string;
@@ -53,8 +48,9 @@ type ParticipantRow = {
   disconnectedAt: Date | null;
   leftAt: Date | null;
   removedAt: Date | null;
+  selfMuted: number;
+  moderatorMuted: number;
 };
-
 type ParticipantSessionRow = {
   id: string;
   participantId: string;
@@ -66,14 +62,8 @@ type ParticipantSessionRow = {
 };
 
 export function mapUser(row: UserRow): UserRecord {
-  return {
-    id: row.id,
-    name: row.name,
-    avatarUrl: row.avatarUrl,
-    bio: row.bio,
-  };
+  return { id: row.id, name: row.name, avatarUrl: row.avatarUrl, bio: row.bio };
 }
-
 export function mapRoom(row: RoomRow): RoomState {
   return {
     id: row.id as RoomState['id'],
@@ -85,7 +75,6 @@ export function mapRoom(row: RoomRow): RoomState {
     endedAt: row.endedAt,
   };
 }
-
 export function mapRoomSession(row: RoomSessionRow): RoomSessionState {
   return {
     id: row.id as RoomSessionState['id'],
@@ -97,7 +86,6 @@ export function mapRoomSession(row: RoomSessionRow): RoomSessionState {
     endedAt: row.endedAt,
   };
 }
-
 export function mapParticipant(row: ParticipantRow): ParticipantState {
   return {
     id: row.id as ParticipantState['id'],
@@ -111,9 +99,10 @@ export function mapParticipant(row: ParticipantRow): ParticipantState {
     disconnectedAt: row.disconnectedAt,
     leftAt: row.leftAt,
     removedAt: row.removedAt,
+    selfMuted: row.selfMuted === 1,
+    moderatorMuted: row.moderatorMuted === 1,
   };
 }
-
 export function mapParticipantSession(row: ParticipantSessionRow): ParticipantSessionState {
   return {
     id: row.id as ParticipantSessionState['id'],

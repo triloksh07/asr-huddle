@@ -20,12 +20,12 @@ export type ParticipantState = Readonly<{
   managementRole: ManagementRole;
   audioRole: AudioRole;
   status: ParticipantStatus;
-  selfMuted: boolean;
-  moderatorMuted: boolean;
   joinedAt: Date;
   disconnectedAt: Date | null;
   leftAt: Date | null;
   removedAt: Date | null;
+  selfMuted: boolean;
+  moderatorMuted: boolean;
 }>;
 
 export type ParticipantSessionState = Readonly<{
@@ -53,12 +53,12 @@ export function createHostParticipant(input: {
     managementRole: 'HOST',
     audioRole: 'SPEAKER',
     status: 'CONNECTED',
-    selfMuted: false,
-    moderatorMuted: false,
     joinedAt: input.joinedAt,
     disconnectedAt: null,
     leftAt: null,
     removedAt: null,
+    selfMuted: false,
+    moderatorMuted: false,
   };
 }
 
@@ -77,12 +77,12 @@ export function createParticipant(input: {
     managementRole: 'NONE',
     audioRole: 'LISTENER',
     status: 'CONNECTED',
-    selfMuted: false,
-    moderatorMuted: false,
     joinedAt: input.joinedAt,
     disconnectedAt: null,
     leftAt: null,
     removedAt: null,
+    selfMuted: false,
+    moderatorMuted: false,
   };
 }
 
@@ -140,6 +140,15 @@ export function setSelfMuted(participant: ParticipantState, muted: boolean): Par
 export function setModeratorMuted(participant: ParticipantState, muted: boolean): ParticipantState {
   ensureConnected(participant);
   return { ...participant, moderatorMuted: muted };
+}
+
+export function canTransmitAudio(participant: ParticipantState): boolean {
+  return (
+    participant.status === 'CONNECTED' &&
+    participant.audioRole === 'SPEAKER' &&
+    !participant.selfMuted &&
+    !participant.moderatorMuted
+  );
 }
 
 export function markDisconnected(
