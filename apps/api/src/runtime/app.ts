@@ -1,19 +1,16 @@
-import type { MediaService } from "@repo/media-contract";
-import type { DisconnectRoom } from "@repo/application";
-import { CommandRouter } from "../realtime/command-router.js";
-import { ConnectionRegistry } from "../realtime/connection-registry.js";
-import {
-  RejectingRealtimeAuthenticator,
-  createRealtimeRuntime,
-} from "../realtime/index.js";
-import { MediaController } from "../media/media-controller.js";
+import type { MediaService } from '@repo/media-contract';
+import type { DisconnectRoom } from '@repo/application';
+import { CommandRouter } from '../realtime/command-router.js';
+import { ConnectionRegistry } from '../realtime/connection-registry.js';
+import { RejectingRealtimeAuthenticator, createRealtimeRuntime } from '../realtime/index.js';
+import { MediaController } from '../media/media-controller.js';
 import {
   ConnectMediaTransportCommand,
   ConsumeAudioCommand,
   CreateMediaTransportCommand,
   ListAudioProducersCommand,
   ProduceAudioCommand,
-} from "../realtime/commands/media.js";
+} from '../realtime/commands/media.js';
 
 export interface ApiRuntimeDependencies {
   media: MediaService;
@@ -27,9 +24,7 @@ export interface ApiRuntime {
   router: CommandRouter;
 }
 
-export function createApiRuntime(
-  dependencies: ApiRuntimeDependencies,
-): ApiRuntime {
+export function createApiRuntime(dependencies: ApiRuntimeDependencies): ApiRuntime {
   const connections = new ConnectionRegistry();
   const router = new CommandRouter();
   const mediaController = new MediaController(dependencies.media);
@@ -48,7 +43,8 @@ export function createApiRuntime(
       connections,
       new RejectingRealtimeAuthenticator(),
       dependencies.disconnectRoom,
-      dependencies.disconnectRecoveryMs ?? 15_000,
+      mediaController,
+      dependencies.disconnectRecoveryMs ?? 15_000
     ),
   };
 }
