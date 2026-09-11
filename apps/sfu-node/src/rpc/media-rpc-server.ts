@@ -1,18 +1,18 @@
-import { randomUUID } from "node:crypto";
-import type { IncomingMessage, ServerResponse } from "node:http";
-import type { MediaService } from "@repo/media-contract";
+import { randomUUID } from 'node:crypto';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { JoinMediaContext, MediaService, MediaTransportDirection } from '@repo/media-contract';
 import {
   mediaRpcMethods,
   type MediaRpcMethod,
   type MediaRpcRequest,
   type MediaRpcResponse,
-} from "@repo/media-contract";
+} from '@repo/media-contract';
 
 const MAX_BODY_BYTES = 256 * 1024;
 
 function sendJson(response: ServerResponse, status: number, body: MediaRpcResponse): void {
   response.statusCode = status;
-  response.setHeader("content-type", "application/json");
+  response.setHeader('content-type', 'application/json');
   response.end(JSON.stringify(body));
 }
 
@@ -24,21 +24,21 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     size += buffer.length;
     if (size > MAX_BODY_BYTES) {
-      throw new Error("MEDIA_RPC_BODY_TOO_LARGE");
+      throw new Error('MEDIA_RPC_BODY_TOO_LARGE');
     }
     chunks.push(buffer);
   }
 
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
 export class MediaRpcServer {
   constructor(private readonly media: MediaService) {}
 
   async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    if (request.method !== "POST") {
+    if (request.method !== 'POST') {
       response.statusCode = 405;
-      response.setHeader("allow", "POST");
+      response.setHeader('allow', 'POST');
       response.end();
       return;
     }
@@ -54,12 +54,11 @@ export class MediaRpcServer {
         result,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Media RPC failed.";
+      const message = error instanceof Error ? error.message : 'Media RPC failed.';
       const code =
-        error && typeof error === "object" && "code" in error &&
-        typeof error.code === "string"
+        error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
           ? error.code
-          : "MEDIA_RPC_FAILED";
+          : 'MEDIA_RPC_FAILED';
 
       sendJson(response, 400, {
         requestId: this.requestIdFromError(request),
@@ -70,26 +69,31 @@ export class MediaRpcServer {
   }
 
   private parseRequest(raw: unknown): MediaRpcRequest {
-    if (!raw || typeof raw !== "object") throw new Error("INVALID_MEDIA_RPC");
+    if (!raw || typeof raw !== 'object') throw new Error('INVALID_MEDIA_RPC');
 
     const value = raw as Partial<MediaRpcRequest>;
     if (
-      typeof value.requestId !== "string" ||
-      typeof value.method !== "string" ||
+      typeof value.requestId !== 'string' ||
+      typeof value.method !== 'string' ||
       !Object.values(mediaRpcMethods).includes(value.method as MediaRpcMethod)
     ) {
-      throw new Error("INVALID_MEDIA_RPC");
+      throw new Error('INVALID_MEDIA_RPC');
     }
 
     return value as MediaRpcRequest;
   }
 
-  private dispatch(method: MediaRpcMethod, params: MediaRpcRequest["params"]): Promise<unknown> {
+  private dispatch(method: MediaRpcMethod, params: MediaRpcRequest['params']): Promise<unknown> {
     switch (method) {
       case mediaRpcMethods.createRouter:
         return this.media.createRouter(params as never);
-      case mediaRpcMethods.createTransport:
-        return this.media.createWebRtcTransport(params as never);
+      case mediaRpcMethods.createTransport: {
+        const { direction = 'send', ...context } = params as {
+          direction?: MediaTransportDirection;
+        } & JoinMediaContext;
+
+        return this.media.createWebRtcTransport(context as JoinMediaContext, direction);
+      }
       case mediaRpcMethods.connectTransport:
         return this.media.connectWebRtcTransport(params as never);
       case mediaRpcMethods.produceAudio:
