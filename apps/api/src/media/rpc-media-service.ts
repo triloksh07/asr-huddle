@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID } from 'node:crypto';
 import type {
   ConnectTransportCommand,
   ConsumeAudioCommand,
@@ -9,9 +9,12 @@ import type {
   MediaService,
   ProduceAudioCommand,
   ProduceAudioResult,
-} from "@repo/media-contract";
-import { mediaRpcMethods } from "@repo/media-contract";
-import { MediaControlError } from "./media-errors.js";
+  // CreateRoomMediaResult,
+  ConsumeAudioResult,
+  MediaCapabilities,
+} from '@repo/media-contract';
+import { mediaRpcMethods } from '@repo/media-contract';
+import { MediaControlError } from './media-errors.js';
 
 export interface MediaRpcClientOptions {
   baseUrl: string;
@@ -28,8 +31,19 @@ export class RpcMediaService implements MediaService {
     this.timeoutMs = options.requestTimeoutMs ?? 5000;
   }
 
-  createRouter(context: CreateRoomMediaContext) {
-    return this.call(mediaRpcMethods.createRouter, context);
+  // createRouter(context: CreateRoomMediaContext) {
+  //   // return this.call<CreateRoomMediaResult>(mediaRpcMethods.createRouter, context);
+  //   return this.call(mediaRpcMethods.createRouter, context);
+  // }
+
+  createRouter(context: CreateRoomMediaContext): Promise<{
+    routerId: string;
+    rtpCapabilities: MediaCapabilities;
+  }> {
+    return this.call<{
+      routerId: string;
+      rtpCapabilities: MediaCapabilities;
+    }>(mediaRpcMethods.createRouter, context);
   }
 
   createWebRtcTransport(context: JoinMediaContext): Promise<CreateTransportResult> {
@@ -45,7 +59,7 @@ export class RpcMediaService implements MediaService {
   }
 
   consumeAudio(command: ConsumeAudioCommand) {
-    return this.call(mediaRpcMethods.consumeAudio, command);
+    return this.call<ConsumeAudioResult>(mediaRpcMethods.consumeAudio, command);
   }
 
   listAudioProducers(context: JoinMediaContext): Promise<MediaProducerInfo[]> {
@@ -66,9 +80,9 @@ export class RpcMediaService implements MediaService {
 
     try {
       const response = await this.fetchImpl(`${this.options.baseUrl}/rpc/media`, {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "content-type": "application/json",
+          'content-type': 'application/json',
         },
         body: JSON.stringify({
           requestId: randomUUID(),
@@ -82,23 +96,23 @@ export class RpcMediaService implements MediaService {
       try {
         body = await response.json();
       } catch {
-        throw new MediaControlError("MEDIA_RPC_INVALID_RESPONSE", "SFU returned invalid JSON.");
+        throw new MediaControlError('MEDIA_RPC_INVALID_RESPONSE', 'SFU returned invalid JSON.');
       }
 
       if (!response.ok || body?.ok !== true) {
         throw new MediaControlError(
-          body?.error?.code ?? "MEDIA_RPC_FAILED",
-          body?.error?.message ?? "SFU media operation failed.",
+          body?.error?.code ?? 'MEDIA_RPC_FAILED',
+          body?.error?.message ?? 'SFU media operation failed.'
         );
       }
 
       return body.result as T;
     } catch (error) {
       if (error instanceof MediaControlError) throw error;
-      if (error instanceof DOMException && error.name === "AbortError") {
-        throw new MediaControlError("MEDIA_RPC_TIMEOUT", "SFU media operation timed out.");
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw new MediaControlError('MEDIA_RPC_TIMEOUT', 'SFU media operation timed out.');
       }
-      throw new MediaControlError("MEDIA_RPC_UNAVAILABLE", "SFU media service is unavailable.");
+      throw new MediaControlError('MEDIA_RPC_UNAVAILABLE', 'SFU media service is unavailable.');
     } finally {
       clearTimeout(timeout);
     }

@@ -1,5 +1,5 @@
-import type { ConnectionId, ParticipantId, UserId } from "@repo/domain";
-import type { RealtimeConnection, RealtimeTransport } from "./types.js";
+import type { ConnectionId, ParticipantId, UserId, RoomId } from '@repo/domain';
+import type { RealtimeConnection, RealtimeTransport, RealtimeResponse } from './types.js';
 
 export interface RegisteredConnection extends RealtimeConnection {
   transport: RealtimeTransport;
@@ -28,6 +28,22 @@ export class ConnectionRegistry {
       if (connection.participantId === participantId) return connection;
     }
     return null;
+  }
+
+  getByRoom(roomId: RoomId): readonly RegisteredConnection[] {
+    return [...this.connections.values()].filter(connection => connection.roomId === roomId);
+  }
+
+  async broadcastRoom(
+    roomId: RoomId,
+    response: RealtimeResponse,
+    exceptConnectionId?: ConnectionId
+  ): Promise<void> {
+    await Promise.all(
+      this.getByRoom(roomId)
+        .filter(connection => connection.connectionId !== exceptConnectionId)
+        .map(connection => connection.transport.send(response))
+    );
   }
 
   remove(connectionId: ConnectionId): RegisteredConnection | null {

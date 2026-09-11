@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ParticipantId, RoomId } from "@repo/domain";
-import type { CancelSpeakerRequestUseCase } from "@repo/application";
+import type { CancelSpeakerRequest } from "@repo/application";
 import type {
   RealtimeCommandContext,
   RealtimeCommandHandler,
@@ -16,7 +16,7 @@ const payloadSchema = z.object({
 export class CancelSpeakerRequestRealtimeCommand implements RealtimeCommandHandler {
   readonly type = "speaker.request.cancel";
 
-  constructor(private readonly useCase: CancelSpeakerRequestUseCase) {}
+  constructor(private readonly useCase: CancelSpeakerRequest) {}
 
   async handle(
     context: RealtimeCommandContext,
@@ -29,7 +29,7 @@ export class CancelSpeakerRequestRealtimeCommand implements RealtimeCommandHandl
     }
 
     await this.useCase.execute({
-      roomId: parsed.roomId as RoomId,
+      // roomId: parsed.roomId as RoomId,
       requestId: parsed.requestId as never,
       participantId: context.connection.participantId as ParticipantId,
     });

@@ -1,7 +1,6 @@
 import {
-  markLeft,
+  markDisconnected,
   markSessionDisconnected,
-  markSessionIntentionalLeave,
 } from "@repo/domain";
 import { ApplicationError } from "../errors.js";
 import type {
@@ -10,51 +9,46 @@ import type {
   ParticipantSessionRepository,
 } from "../ports.js";
 
-export interface LeaveRoomCommand {
+export interface DisconnectRoomCommand {
   readonly participantId: string;
   readonly participantSessionId: string;
+  readonly recoverableForMs: number;
 }
 
-export class LeaveRoom {
+export class DisconnectRoom {
   constructor(
     private readonly participants: ParticipantRepository,
     private readonly participantSessions: ParticipantSessionRepository,
     private readonly clock: ApplicationClock,
   ) {}
 
-  async execute(command: LeaveRoomCommand): Promise<void> {
+  async execute(command: DisconnectRoomCommand): Promise<void> {
     const participant = await this.participants.findById(command.participantId);
     if (!participant) {
       throw new ApplicationError("NOT_FOUND", "Participant was not found.");
     }
 
-    const participantSession = await this.participantSessions.findById(
+    const session = await this.participantSessions.findById(
       command.participantSessionId,
     );
-    if (!participantSession) {
-      throw new ApplicationError(
-        "NOT_FOUND",
-        "Participant session was not found.",
-      );
+
+    if (!session) {
+      throw new ApplicationError("NOT_FOUND", "Participant session was not found.");
     }
 
-    if (participantSession.participantId !== participant.id) {
+    if (session.participantId !== participant.id) {
       throw new ApplicationError(
-        "FORBIDDEN",
+        "INVALID_STATE",
         "Participant session does not belong to the participant.",
       );
     }
 
     const now = this.clock.now();
-    const left = markLeft(participant, now);
-    const disconnected = markSessionDisconnected(
-      participantSession,
-      now,
-      null,
-    );
-    const closed = markSessionIntentionalLeave(disconnected);
+    const recoverableUntil = new Date(now.getTime() + command.recoverableForMs);
 
-    await this.participants.save(left);
-    await this.participantSessions.save(closed);
+    await this.participants.save(markDisconnected(participant, now));
+    await this.participantSessions.save(
+      markSessionDisconnected(session, now, recoverableUntil),
+    );
   }
 }

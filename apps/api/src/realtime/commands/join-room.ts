@@ -1,37 +1,52 @@
-import { z } from "zod";
-import type { RoomId, UserId } from "@repo/domain";
-import type { JoinRoomUseCase } from "@repo/application";
+import { z } from 'zod';
 import type {
-  RealtimeCommandContext,
-  RealtimeCommandHandler,
-  RealtimeEnvelope,
-} from "../types.js";
-import { realtimeErrors } from "../errors.js";
+  ParticipantId,
+  ParticipantSessionId,
+  RoomId,
+  RoomSessionId,
+  UserId,
+} from '@repo/domain';
+import type { GetRoomSnapshot, JoinRoom } from '@repo/application';
+import type { RealtimeCommandContext, RealtimeCommandHandler, RealtimeEnvelope } from '../types.js';
+import { realtimeErrors } from '../errors.js';
+import { bindRoomSession, RealtimeConnectionContext } from '../connection-context.js';
 
 const payloadSchema = z.object({
   roomId: z.string().min(1),
 });
 
 export class JoinRoomRealtimeCommand implements RealtimeCommandHandler {
-  readonly type = "room.join";
+  readonly type = 'room.join';
 
-  constructor(private readonly useCase: JoinRoomUseCase) {}
+  constructor(
+    private readonly useCase: JoinRoom,
+    private readonly getRoomSnapshot: GetRoomSnapshot
+  ) {}
 
-  async handle(
-    context: RealtimeCommandContext,
-    envelope: RealtimeEnvelope,
-  ): Promise<unknown> {
+  async handle(context: RealtimeCommandContext, envelope: RealtimeEnvelope): Promise<unknown> {
     const parsed = payloadSchema.parse(envelope.payload);
 
     if (context.connection.roomId) {
-      throw realtimeErrors.invalidState("Connection is already attached to a room.");
+      throw realtimeErrors.invalidState('Connection is already attached to a room.');
     }
 
     const result = await this.useCase.execute({
       roomId: parsed.roomId as RoomId,
       userId: context.connection.userId as UserId,
+      connectionId: context.connection.connectionId,
     });
 
-    return result;
+    bindRoomSession(context.connection as unknown as RealtimeConnectionContext, {
+      roomId: result.roomId as RoomId,
+      roomSessionId: result.roomSessionId as RoomSessionId,
+      participantId: result.participantId as ParticipantId,
+      participantSessionId: result.participantSessionId as ParticipantSessionId,
+    });
+
+    const snapshot = await this.getRoomSnapshot.execute({
+      roomId: result.roomId as RoomId,
+    });
+
+    return { ...result, snapshot };
   }
 }
