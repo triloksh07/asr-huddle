@@ -94,7 +94,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
   const disconnectRoom = new DisconnectRoom(participants, participantSessions, clock, events);
 
   const media = new RpcMediaService({ baseUrl: config.mediaBaseUrl });
-  const mediaController = new MediaController(media);
+  const mediaController = new MediaController(media, events, () => clock.now());
 
   const router = new CommandRouter();
   router.register(new JoinRoomRealtimeCommand(joinRoom, getRoomSnapshot));

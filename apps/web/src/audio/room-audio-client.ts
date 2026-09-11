@@ -8,9 +8,10 @@ type Result<T> =
       ok: false;
       error: { code: string; message: string };
     };
-type RealtimeEvent = { type: string; payload: unknown };
+type RealtimeEvent = { type: string; payload: any };
 type TransportResult = {
   transportId: string;
+  direction: 'send' | 'recv';
   iceParameters: any;
   iceCandidates: any[];
   dtlsParameters: any;
@@ -38,6 +39,7 @@ export class RoomAudioClient {
   private readonly consumers = new Map<string, types.Consumer>();
   private device?: Device;
   private session?: JoinedSession;
+  private microphoneTrack?: MediaStreamTrack;
 
   constructor(
     private readonly ws: WebSocket,
@@ -66,14 +68,17 @@ export class RoomAudioClient {
 
   async enableMicrophone(): Promise<void> {
     if (!this.session) throw new Error('Join a room first.');
-    const sendParams = await this.createTransport();
+    if (this.producer) return;
+
+    const sendParams = await this.createTransport('send');
     if (!this.device) this.device = new Device();
     if (!this.device.loaded)
       await this.device.load({
         routerRtpCapabilities: sendParams.rtpCapabilities,
       });
     this.sendTransport = this.configureSendTransport(sendParams);
-    const recvParams = await this.createTransport();
+
+    const recvParams = await this.createTransport('recv');
     this.recvTransport = this.configureRecvTransport(recvParams);
 
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -82,6 +87,8 @@ export class RoomAudioClient {
     });
     const track = stream.getAudioTracks()[0];
     if (!track) throw new Error('No microphone audio track was returned.');
+    this.microphoneTrack = track;
+
     this.producer = await this.sendTransport.produce({
       track,
       appData: {
@@ -92,12 +99,11 @@ export class RoomAudioClient {
     await this.consumeCurrentSpeakers();
   }
 
-  private async createTransport(): Promise<TransportResult> {
-    const result = await this.command<TransportResult>('media.transport.create', {});
+  private async createTransport(direction: 'send' | 'recv'): Promise<TransportResult> {
+    const result = await this.command<TransportResult>('media.transport.create', { direction });
     if (!result.ok) throw new Error(result.error.message);
     return result.payload;
   }
-
   private wireConnect(transport: types.Transport): void {
     transport.on('connect', async ({ dtlsParameters }, callback, errback) => {
       try {
@@ -112,7 +118,6 @@ export class RoomAudioClient {
       }
     });
   }
-
   private configureSendTransport(params: TransportResult): types.Transport {
     if (!this.device) throw new Error('Device is not initialized');
     const transport = this.device.createSendTransport(params as any);
@@ -133,7 +138,6 @@ export class RoomAudioClient {
     });
     return transport;
   }
-
   private configureRecvTransport(params: TransportResult): types.Transport {
     if (!this.device) throw new Error('Device is not initialized');
     const transport = this.device.createRecvTransport(params as any);
@@ -148,28 +152,52 @@ export class RoomAudioClient {
     for (const producer of result.payload as Array<{
       producerId: string;
       participantId: string;
-    }>) {
-      if (
-        producer.participantId === this.session.participantId ||
-        this.consumers.has(producer.producerId)
-      )
-        continue;
-      const consumed = await this.command<ConsumeResult>('media.audio.consume', {
-        transportId: this.recvTransport.id,
-        producerId: producer.producerId,
-        rtpCapabilities: this.device.rtpCapabilities,
-      });
-      if (!consumed.ok) throw new Error(consumed.error.message);
-      const consumer = await this.recvTransport.consume({
-        id: consumed.payload.consumerId,
-        producerId: consumed.payload.producerId,
-        kind: 'audio',
-        rtpParameters: consumed.payload.rtpParameters,
-      } as any);
-      this.consumers.set(consumer.id, consumer);
-      await consumer.resume();
-      this.onAudioTrack(consumer.track);
+    }>)
+      await this.consumeProducer(producer.producerId, producer.participantId);
+  }
+
+  private async consumeProducer(producerId: string, participantId?: string): Promise<void> {
+    if (!this.session || !this.recvTransport || !this.device) return;
+    if (participantId === this.session.participantId || this.consumers.has(producerId)) return;
+    const consumed = await this.command<ConsumeResult>('media.audio.consume', {
+      roomId: this.session.roomId,
+      participantId: this.session.participantId,
+      participantSessionId: this.session.participantSessionId,
+      producerId,
+      rtpCapabilities: this.device.rtpCapabilities,
+    });
+    if (!consumed.ok) throw new Error(consumed.error.message);
+    const consumer = await this.recvTransport.consume({
+      id: consumed.payload.consumerId,
+      producerId: consumed.payload.producerId,
+      kind: 'audio',
+      rtpParameters: consumed.payload.rtpParameters,
+    } as any);
+    this.consumers.set(consumer.id, consumer);
+    await consumer.resume();
+    this.onAudioTrack(consumer.track);
+  }
+
+  private handleMessage(raw: string): void {
+    let message: Result<any> | RealtimeEvent;
+    try {
+      message = JSON.parse(raw);
+    } catch {
+      return;
     }
+    if (!('requestId' in message) || !message.requestId) {
+      if ('type' in message && 'payload' in message) {
+        this.onRealtimeEvent(message);
+        if (message.type === 'media.audio.producer.created') {
+          void this.consumeProducer(message.payload.producerId, message.payload.participantId);
+        }
+      }
+      return;
+    }
+    const resolve = this.pending.get(message.requestId);
+    if (!resolve) return;
+    this.pending.delete(message.requestId);
+    resolve(message as Result<any>);
   }
 
   private command<T>(type: string, payload: unknown): Promise<Result<T>> {
@@ -192,20 +220,16 @@ export class RoomAudioClient {
     });
   }
 
-  private handleMessage(raw: string): void {
-    let message: Result<any> | RealtimeEvent;
-    try {
-      message = JSON.parse(raw);
-    } catch {
-      return;
-    }
-    if (!('requestId' in message) || !message.requestId) {
-      if ('type' in message && 'payload' in message) this.onRealtimeEvent(message);
-      return;
-    }
-    const resolve = this.pending.get(message.requestId);
-    if (!resolve) return;
-    this.pending.delete(message.requestId);
-    resolve(message as Result<any>);
+  close(): void {
+    this.microphoneTrack?.stop();
+    this.producer?.close();
+    for (const consumer of this.consumers.values()) consumer.close();
+    this.sendTransport?.close();
+    this.recvTransport?.close();
+    this.microphoneTrack = undefined;
+    this.producer = undefined;
+    this.sendTransport = undefined;
+    this.recvTransport = undefined;
+    this.consumers.clear();
   }
 }

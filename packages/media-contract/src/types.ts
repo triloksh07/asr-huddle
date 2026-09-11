@@ -3,6 +3,7 @@ import type { ParticipantId, ParticipantSessionId, RoomId, RoomSessionId } from 
 export type MediaTransportId = string & { readonly __mediaTransportId: unique symbol };
 export type MediaProducerId = string & { readonly __mediaProducerId: unique symbol };
 export type MediaConsumerId = string & { readonly __mediaConsumerId: unique symbol };
+export type MediaTransportDirection = 'send' | 'recv';
 
 export interface CreateRoomMediaContext {
   roomId: RoomId;
@@ -21,6 +22,7 @@ export interface MediaCapabilities {
 
 export interface CreateTransportResult {
   transportId: MediaTransportId;
+  direction: MediaTransportDirection;
   iceParameters: unknown;
   iceCandidates: unknown[];
   dtlsParameters: unknown;
@@ -62,7 +64,10 @@ export interface MediaService {
   createRouter(
     context: CreateRoomMediaContext
   ): Promise<{ routerId: string; rtpCapabilities: MediaCapabilities }>;
-  createWebRtcTransport(context: JoinMediaContext): Promise<CreateTransportResult>;
+  createWebRtcTransport(
+    context: JoinMediaContext,
+    direction: MediaTransportDirection
+  ): Promise<CreateTransportResult>;
   connectWebRtcTransport(command: ConnectTransportCommand): Promise<void>;
   produceAudio(command: ProduceAudioCommand): Promise<ProduceAudioResult>;
   consumeAudio(command: ConsumeAudioCommand): Promise<ConsumeAudioResult>;

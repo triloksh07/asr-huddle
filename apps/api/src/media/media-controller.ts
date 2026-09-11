@@ -1,7 +1,6 @@
 import type {
   ConnectTransportCommand,
   ConsumeAudioCommand,
-  CreateRoomMediaContext,
   MediaService,
   ProduceAudioCommand,
 } from '@repo/media-contract';
@@ -9,8 +8,10 @@ import type { ParticipantId, ParticipantSessionId, RoomId, RoomSessionId } from 
 import {
   connectTransportSchema,
   consumeAudioSchema,
+  createTransportSchema,
   produceAudioSchema,
 } from '@repo/media-contract';
+import type { DomainEvent, EventPublisher } from '@repo/application';
 import { MediaControlError } from './media-errors.js';
 
 export interface MediaSessionContext {
@@ -21,18 +22,26 @@ export interface MediaSessionContext {
 }
 
 export class MediaController {
-  constructor(private readonly media: MediaService) {}
+  constructor(
+    private readonly media: MediaService,
+    private readonly events?: EventPublisher,
+    private readonly now: () => Date = () => new Date()
+  ) {}
 
-  async createTransport(context: MediaSessionContext) {
+  async createTransport(context: MediaSessionContext, payload: unknown) {
+    const parsed = createTransportSchema.safeParse(payload);
+    if (!parsed.success)
+      throw new MediaControlError('INVALID_MEDIA_COMMAND', 'Invalid transport creation payload.');
+
     const router = await this.media.createRouter({
       roomId: context.roomId,
       roomSessionId: context.roomSessionId,
     });
-    const transport = await this.media.createWebRtcTransport(context);
+    const transport = await this.media.createWebRtcTransport(context, parsed.data.direction);
     return { ...transport, rtpCapabilities: router.rtpCapabilities };
   }
 
-  async connectTransport(context: MediaSessionContext, payload: unknown): Promise<void> {
+  async connectTransport(_context: MediaSessionContext, payload: unknown): Promise<void> {
     const parsed = connectTransportSchema.safeParse(payload);
     if (!parsed.success)
       throw new MediaControlError('INVALID_MEDIA_COMMAND', 'Invalid transport connection payload.');
@@ -52,7 +61,21 @@ export class MediaController {
         'Producer identity does not match the realtime session.'
       );
     }
-    return this.media.produceAudio(parsed.data as ProduceAudioCommand);
+
+    const result = await this.media.produceAudio(parsed.data as ProduceAudioCommand);
+    if (this.events) {
+      const event: DomainEvent = {
+        type: 'media.audio.producer.created',
+        occurredAt: this.now(),
+        roomId: context.roomId,
+        roomSessionId: context.roomSessionId,
+        participantId: context.participantId,
+        participantSessionId: context.participantSessionId,
+        payload: { producerId: result.producerId, kind: 'audio' },
+      };
+      await this.events.publish(event);
+    }
+    return result;
   }
 
   listAudioProducers(context: MediaSessionContext) {
