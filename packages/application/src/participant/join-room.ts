@@ -42,7 +42,7 @@ export class JoinRoom {
     private readonly participantSessions: ParticipantSessionRepository,
     private readonly ids: IdGenerator,
     private readonly clock: ApplicationClock,
-    private readonly events: EventPublisher,
+    private readonly events?: EventPublisher,
   ) {}
 
   async execute(command: JoinRoomCommand): Promise<JoinRoomResult> {
@@ -151,7 +151,7 @@ export class JoinRoom {
       audioRole: participant.audioRole,
     };
 
-    await this.events.publish({
+    await this.events!.publish({
       type: "participant.joined",
       occurredAt: now,
       roomId: participant.roomId,
