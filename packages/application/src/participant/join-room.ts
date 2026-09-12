@@ -64,9 +64,8 @@ export class JoinRoom {
           coHosts: coHostCount,
         });
         const now = this.clock.now();
-        const isFirstHostParticipation =
-          room.hostUserId === user.id && !existing.some(p => p.userId === user.id);
-        const participant = isFirstHostParticipation
+        const isHostParticipation = room.hostUserId === user.id;
+        const participant = isHostParticipation
           ? createHostParticipant({
               id: this.ids.next() as ReturnType<typeof createHostParticipant>['id'],
               roomId: room.id,
