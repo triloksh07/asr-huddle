@@ -4,7 +4,151 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>ASR Huddle</title>
-    <link rel="stylesheet" href="./src/styles.css" />
+    <style>
+      :root {
+        --asr-canvas: #160d08;
+        --asr-surface: rgba(49, 28, 17, 0.72);
+        --asr-surfaceRaised: rgba(79, 42, 20, 0.82);
+        --asr-text: #fff5eb;
+        --asr-muted: #d9bda8;
+        --asr-brand: #ff7a18;
+        --asr-brandStrong: #ff9c4a;
+        --asr-danger: #ff625f;
+        --asr-border: rgba(255, 197, 154, 0.24);
+        --asr-xs: 0.5rem;
+        --asr-sm: 0.75rem;
+        --asr-md: 1rem;
+        --asr-lg: 1.5rem;
+        --asr-xl: 2rem;
+        --asr-radius-sm: 0.5rem;
+        --asr-radius-lg: 1.25rem;
+        --asr-radius-pill: 999px;
+        --asr-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.24);
+        --asr-body: Inter, ui-sans-serif, system-ui, sans-serif;
+        --asr-content: 72rem;
+        --asr-blur: 1rem;
+
+        font-family: var(--asr-body);
+        color: var(--asr-text);
+        background: var(--asr-canvas);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-width: 20rem;
+        background-color: var(--asr-canvas);
+        color: var(--asr-text);
+      }
+
+      button,
+      input,
+      textarea,
+      select {
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      #app {
+        max-width: var(--asr-content);
+        margin: auto;
+        padding: var(--asr-xl);
+      }
+
+      .shell {
+        display: grid;
+        gap: var(--asr-xl);
+      }
+
+      .surface {
+        background: var(--asr-surface);
+        border: 1px solid var(--asr-border);
+        border-radius: var(--asr-radius-lg);
+        box-shadow: var(--asr-shadow);
+        backdrop-filter: blur(var(--asr-blur));
+        padding: var(--asr-lg);
+      }
+
+      .row {
+        display: flex;
+        gap: var(--asr-md);
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .between {
+        justify-content: space-between;
+      }
+
+      .stack {
+        display: grid;
+        gap: var(--asr-md);
+      }
+
+      input,
+      textarea,
+      select {
+        width: 100%;
+        color: var(--asr-text);
+        background: var(--asr-surfaceRaised);
+        border: 1px solid var(--asr-border);
+        border-radius: var(--asr-radius-sm);
+        padding: var(--asr-sm);
+      }
+
+      .button {
+        border: 0;
+        border-radius: var(--asr-radius-pill);
+        padding: var(--asr-sm) var(--asr-lg);
+        color: var(--asr-canvas);
+        background: var(--asr-brand);
+        font-weight: 700;
+      }
+
+      .button:hover {
+        background: var(--asr-brandStrong);
+      }
+
+      .button.secondary {
+        color: var(--asr-text);
+        background: var(--asr-surfaceRaised);
+        border: 1px solid var(--asr-border);
+      }
+
+      .button.danger {
+        background: var(--asr-danger);
+      }
+
+      .muted {
+        color: var(--asr-muted);
+      }
+
+      .rooms {
+        display: grid;
+        gap: var(--asr-md);
+      }
+
+      .room {
+        display: grid;
+        gap: var(--asr-sm);
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      @media (min-width: 48rem) {
+        .split {
+          grid-template-columns: minmax(0, 2fr) minmax(16rem, 1fr);
+        }
+      }
+    </style>
   </head>
   <body>
     <main id="app" class="shell" aria-live="polite">
@@ -13,12 +157,50 @@
           <h1>ASR Huddle</h1>
           <p class="muted">Live audio rooms</p>
         </div>
+        <button class="button secondary hidden" id="logout-btn">Sign out</button>
       </header>
-      <section class="surface stack">
-        <h2>Loading ASR Huddle</h2>
-        <p class="muted">Preparing your secure room experience…</p>
+
+      <p class="muted" id="status-msg"></p>
+
+      <!-- Auth Form (Shown when unauthenticated) -->
+      <section class="surface stack" id="auth-section">
+        <input id="name" placeholder="Name" />
+        <input id="email" type="email" placeholder="Email" />
+        <input id="password" type="password" placeholder="Password (12+ characters)" />
+        <div class="row">
+          <button class="button" id="login-btn">Sign in</button>
+          <button class="button secondary" id="register-btn">Create account</button>
+        </div>
+      </section>
+
+      <!-- Dashboard Controls (Shown when authenticated) -->
+      <section class="surface stack hidden" id="dashboard-section">
+        <div class="row">
+          <input id="title" placeholder="Room title" />
+          <button class="button" id="create-btn">Create room</button>
+          <button class="button secondary" id="refresh-btn">Refresh</button>
+        </div>
+        <textarea id="description" placeholder="Description"></textarea>
+        <select id="visibility">
+          <option value="PUBLIC">Public</option>
+          <option value="LINK_ONLY">Link-only</option>
+        </select>
+        <select id="duration">
+          <option value="60">1 hour</option>
+          <option value="120">2 hours</option>
+          <option value="300">5 hours</option>
+        </select>
+        <div class="rooms" id="rooms-list"></div>
+      </section>
+
+      <!-- Active WebRTC Room View -->
+      <section class="surface hidden" id="room-section">
+        <h2>Connected</h2>
+        <button class="button" id="mic-btn">Enable microphone</button>
+        <div id="audio-streams"></div>
       </section>
     </main>
+
     <noscript><p>ASR Huddle requires JavaScript to manage live audio rooms.</p></noscript>
     <script type="module" src="./src/main.ts"></script>
   </body>
