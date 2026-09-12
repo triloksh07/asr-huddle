@@ -216,6 +216,16 @@ export class MediasoupMediaService implements MediaService {
     this.rooms.delete(context.roomId);
   }
 
+  diagnostics(): { activeRooms: number; activeTransports: number; activeProducers: number; activeConsumers: number } {
+    let activeTransports = 0; let activeProducers = 0; let activeConsumers = 0;
+    for (const room of this.rooms.values()) for (const participant of room.participants.values()) {
+      activeTransports += participant.transports.size;
+      activeProducers += participant.producers.size;
+      activeConsumers += participant.consumers.size;
+    }
+    return { activeRooms: this.rooms.size, activeTransports, activeProducers, activeConsumers };
+  }
+
   private requireRoom(roomId: string): RoomMedia {
     const room = this.rooms.get(roomId);
     if (!room)

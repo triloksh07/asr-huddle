@@ -11,6 +11,8 @@ import { createRealtimeSession } from './ws-session.js';
 import type { RealtimeTransport } from './types.js';
 import { clearRoomSessionBinding } from './types.js';
 import type { MediaController } from '../media/media-controller.js';
+import type { RuntimeMetrics } from '../observability/runtime-metrics.js';
+import type { StructuredLogger } from '../observability/structured-logger.js';
 
 export interface WebSocketLike {
   send(data: string): void;
@@ -29,7 +31,9 @@ export function createRealtimeRuntime(
   authenticator: RealtimeAuthenticator,
   disconnectRoom: DisconnectRoom,
   media: MediaController,
-  disconnectRecoveryMs: number
+  disconnectRecoveryMs: number,
+  metrics?: RuntimeMetrics,
+  logger?: StructuredLogger
 ): RealtimeRuntime {
   return {
     async accept(socket, request) {
@@ -49,8 +53,10 @@ export function createRealtimeRuntime(
         authenticated.connection.userId,
         authenticated.transport,
         router,
-        registry
+        registry,
+        metrics
       );
+      logger?.info("realtime_connection_opened", { connectionId, userId });
 
       let finalized = false;
       const finalizeConnection = async () => {
@@ -83,6 +89,8 @@ export function createRealtimeRuntime(
         }
         clearRoomSessionBinding(registered);
         registry.remove(connectionId);
+        metrics?.recordConnectionClosed();
+        logger?.info("realtime_connection_closed", { connectionId, userId });
       };
 
       socket.on('message', async data => {

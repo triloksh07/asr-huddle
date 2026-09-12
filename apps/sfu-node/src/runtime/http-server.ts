@@ -2,6 +2,10 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { MediaService } from '@repo/media-contract';
 import { MediaRpcServer } from '../rpc/media-rpc-server.js';
 
+type DiagnosableMediaService = MediaService & {
+  diagnostics?: () => { activeRooms: number; activeTransports: number; activeProducers: number; activeConsumers: number };
+};
+
 export function createSfuHttpServer(media: MediaService, options: { host?: string; port: number }) {
   const rpc = new MediaRpcServer(media);
   const server = createServer(async (request: IncomingMessage, response: ServerResponse) => {
@@ -10,6 +14,21 @@ export function createSfuHttpServer(media: MediaService, options: { host?: strin
         response.statusCode = 200;
         response.setHeader('content-type', 'application/json');
         response.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      if (request.url === '/metrics' && request.method === 'GET') {
+        const diagnostics = (media as DiagnosableMediaService).diagnostics?.()
+          ?? { activeRooms: 0, activeTransports: 0, activeProducers: 0, activeConsumers: 0 };
+        response.statusCode = 200;
+        response.setHeader('content-type', 'text/plain; version=0.0.4');
+        response.end([
+          `asr_huddle_sfu_rooms_active ${diagnostics.activeRooms}`,
+          `asr_huddle_sfu_transports_active ${diagnostics.activeTransports}`,
+          `asr_huddle_sfu_producers_active ${diagnostics.activeProducers}`,
+          `asr_huddle_sfu_consumers_active ${diagnostics.activeConsumers}`,
+          `process_resident_memory_bytes ${process.memoryUsage().rss}`,
+          '',
+        ].join('\n'));
         return;
       }
       if (request.url === '/rpc/media') {

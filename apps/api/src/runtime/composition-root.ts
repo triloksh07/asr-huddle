@@ -74,6 +74,8 @@ import { RedisRealtimeEventFanout } from '../realtime/event-fanout.js';
 import { createRealtimeRuntime, type RealtimeRuntime } from '../realtime/ws-runtime.js';
 import { RedisEventPublisher } from './event-publisher.js';
 import { ApiRoomLifecycleRuntime, type RoomLifecycleRuntime } from './room-lifecycle.js';
+import { RuntimeMetrics } from '../observability/runtime-metrics.js';
+import { StructuredLogger } from '../observability/structured-logger.js';
 
 class SystemClock {
   now() {
@@ -94,6 +96,7 @@ export interface ApiRuntime {
   readonly database: ReturnType<typeof createDatabase>;
   readonly redis: ReturnType<typeof createRedisClient>;
   readonly lifecycle: RoomLifecycleRuntime;
+  readonly metrics: RuntimeMetrics;
   readonly close: () => Promise<void>;
 }
 
@@ -117,7 +120,9 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
   const invitations = new PostgresInvitationRepository(database.db);
   const ids = new UuidGenerator();
   const clock = new SystemClock();
-  const events = new RedisEventPublisher(redis);
+  const metrics = new RuntimeMetrics();
+  const logger = new StructuredLogger();
+  const events = new RedisEventPublisher(redis, metrics, logger);
   const registry = new ConnectionRegistry();
 
   const createRoom = new CreateRoom(rooms, roomSessions, ids, clock);
@@ -209,11 +214,11 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
       participantSessions,
       endRoom,
       clock,
-      events,
+      events
     ),
     registry,
     mediaController,
-    config.roomLifecycleIntervalMs,
+    config.roomLifecycleIntervalMs
   );
 
   const router = new CommandRouter();
@@ -259,7 +264,9 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     authenticator,
     disconnect,
     mediaController,
-    config.participantDisconnectRecoveryMs
+    config.participantDisconnectRecoveryMs,
+    metrics,
+    logger
   );
   lifecycle.start();
 
@@ -270,6 +277,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     database,
     redis,
     lifecycle,
+    metrics,
     close: async () => {
       lifecycle.stop();
       await fanout.close();
