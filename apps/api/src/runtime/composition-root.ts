@@ -271,7 +271,6 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     mediaController,
     config.participantDisconnectRecoveryMs,
     metrics,
-    auth,
     logger
   );
   lifecycle.start();
@@ -284,6 +283,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     redis,
     lifecycle,
     metrics,
+    auth,
     close: async () => {
       lifecycle.stop();
       await fanout.close();
