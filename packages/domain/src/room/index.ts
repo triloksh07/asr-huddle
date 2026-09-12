@@ -21,6 +21,8 @@ export type RoomStatus = "ACTIVE" | "ENDED";
 export type RoomState = Readonly<{
   id: RoomId;
   hostUserId: UserId;
+  title?: string;
+  description?: string;
   visibility: RoomVisibility;
   durationMinutes: RoomDurationMinutes;
   status: RoomStatus;
@@ -41,6 +43,8 @@ export type RoomSessionState = Readonly<{
 export function createRoom(input: {
   id: RoomId;
   hostUserId: UserId;
+  title?: string;
+  description?: string;
   visibility: RoomVisibility;
   durationMinutes: RoomDurationMinutes;
   createdAt: Date;
@@ -48,6 +52,8 @@ export function createRoom(input: {
   return {
     id: input.id,
     hostUserId: input.hostUserId,
+    title: input.title ?? "Untitled room",
+    description: input.description ?? "",
     visibility: input.visibility,
     durationMinutes: input.durationMinutes,
     status: "ACTIVE",

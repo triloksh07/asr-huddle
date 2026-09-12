@@ -64,6 +64,8 @@ export const rooms = pgTable(
     hostUserId: uuid('host_user_id')
       .notNull()
       .references(() => users.id),
+    title: varchar('title', { length: 100 }).notNull(),
+    description: varchar('description', { length: 500 }).notNull(),
     visibility: roomVisibilityEnum('visibility').notNull(),
     durationMinutes: integer('duration_minutes').notNull(),
     status: roomStatusEnum('status').notNull().default('ACTIVE'),

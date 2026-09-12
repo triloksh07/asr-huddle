@@ -16,6 +16,7 @@ import {
   PromoteCoHost,
   RemoveParticipant,
   ProcessRoomLifecycle,
+  RoomControl,
   RequestSpeaker,
   RespondInvitation,
   ReconnectRoom,
@@ -45,6 +46,7 @@ import { CommandRouter } from '../realtime/command-router.js';
 import { ConnectionRegistry } from '../realtime/connection-registry.js';
 import { JoinRoomRealtimeCommand } from '../realtime/commands/join-room.js';
 import { LeaveRoomRealtimeCommand } from '../realtime/commands/leave-room.js';
+import { EndRoomRealtimeCommand } from '../realtime/commands/end-room.js';
 import { ReconnectRoomRealtimeCommand } from '../realtime/commands/reconnect-room.js';
 import {
   ConsumeAudioCommand,
@@ -100,6 +102,7 @@ export interface ApiRuntime {
   readonly lifecycle: RoomLifecycleRuntime;
   readonly metrics: RuntimeMetrics;
   readonly auth: AuthService;
+  readonly roomControl: RoomControl;
   readonly close: () => Promise<void>;
 }
 
@@ -132,6 +135,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
 
   const createRoom = new CreateRoom(rooms, roomSessions, ids, clock);
   const endRoom = new EndRoom(rooms, roomSessions, clock, events);
+  const roomControl = new RoomControl(rooms, createRoom, endRoom);
   const snapshot = new GetRoomSnapshot(rooms, roomSessions, participants);
 
   const delegateHost = new DelegateHost(participants, clock, events);
@@ -230,6 +234,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
 
   router.register(new JoinRoomRealtimeCommand(join, snapshot));
   router.register(new LeaveRoomRealtimeCommand(leave));
+  router.register(new EndRoomRealtimeCommand(roomControl));
   router.register(new ReconnectRoomRealtimeCommand(reconnect, snapshot));
 
   router.register(new CreateMediaTransportCommand(mediaController));
@@ -284,6 +289,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     lifecycle,
     metrics,
     auth,
+    roomControl,
     close: async () => {
       lifecycle.stop();
       await fanout.close();

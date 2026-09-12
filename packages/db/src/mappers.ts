@@ -23,6 +23,8 @@ type UserRow = {
 type RoomRow = {
   id: string;
   hostUserId: string;
+  title: string;
+  description: string;
   visibility: 'PUBLIC' | 'LINK_ONLY';
   durationMinutes: number;
   status: 'ACTIVE' | 'ENDED';
@@ -73,6 +75,8 @@ export function mapRoom(row: RoomRow): RoomState {
   return {
     id: row.id as RoomState['id'],
     hostUserId: row.hostUserId as RoomState['hostUserId'],
+    title: row.title,
+    description: row.description,
     visibility: row.visibility,
     durationMinutes: row.durationMinutes as RoomState['durationMinutes'],
     status: row.status,

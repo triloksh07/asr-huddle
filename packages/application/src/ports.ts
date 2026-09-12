@@ -29,6 +29,7 @@ export interface UserRepository {
 }
 export interface RoomRepository {
   findById(roomId: string): Promise<RoomState | null>;
+  findActivePublic(): Promise<readonly RoomState[]>;
   save(room: RoomState): Promise<void>;
 }
 export interface RoomSessionRepository {

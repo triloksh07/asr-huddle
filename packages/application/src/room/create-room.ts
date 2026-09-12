@@ -13,6 +13,8 @@ import type {
 
 export interface CreateRoomCommand {
   readonly userId: string;
+  readonly title: string;
+  readonly description: string;
   readonly visibility: RoomVisibility;
   readonly durationMinutes: RoomDurationMinutes;
 }
@@ -35,6 +37,8 @@ export class CreateRoom {
     const room = createRoom({
       id: this.ids.next() as ReturnType<typeof createRoom>["id"],
       hostUserId: command.userId as ReturnType<typeof createRoom>["hostUserId"],
+      title: command.title,
+      description: command.description,
       visibility: command.visibility,
       durationMinutes: command.durationMinutes,
       createdAt: now,

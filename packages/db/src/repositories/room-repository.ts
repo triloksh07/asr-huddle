@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { RoomRepository } from "@repo/application";
 import type { RoomState } from "@repo/domain";
 import { rooms } from "../schema.js";
@@ -15,6 +15,10 @@ export class PostgresRoomRepository implements RoomRepository {
 
     return row ? mapRoom(row) : null;
   }
+  async findActivePublic() {
+    const rows = await this.database.query.rooms.findMany({ where: and(eq(rooms.status, "ACTIVE"), eq(rooms.visibility, "PUBLIC")) });
+    return rows.map(mapRoom);
+  }
 
   async save(room: RoomState): Promise<void> {
     await this.database
@@ -22,6 +26,8 @@ export class PostgresRoomRepository implements RoomRepository {
       .values({
         id: room.id,
         hostUserId: room.hostUserId,
+        title: room.title,
+        description: room.description,
         visibility: room.visibility,
         durationMinutes: room.durationMinutes,
         status: room.status,
@@ -32,6 +38,8 @@ export class PostgresRoomRepository implements RoomRepository {
         target: rooms.id,
         set: {
           hostUserId: room.hostUserId,
+          title: room.title,
+          description: room.description,
           visibility: room.visibility,
           durationMinutes: room.durationMinutes,
           status: room.status,

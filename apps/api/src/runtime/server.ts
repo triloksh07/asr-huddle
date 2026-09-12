@@ -63,6 +63,90 @@ export async function startServer(runtime: ApiRuntime): Promise<RunningServer> {
     }
   });
 
+  const authenticatedUserId = (request: express.Request): string | null => {
+    const header = request.header('authorization');
+    if (!header?.startsWith('Bearer ')) return null;
+    try {
+      return runtime.auth.authenticate(header.slice(7));
+    } catch {
+      return null;
+    }
+  };
+
+  app.post('/v1/rooms', async (request, response) => {
+    const userId = authenticatedUserId(request);
+    if (!userId) {
+      response.status(401).json({ error: 'Authentication is required.' });
+      return;
+    }
+    const body = request.body as {
+      title?: unknown;
+      description?: unknown;
+      visibility?: unknown;
+      durationMinutes?: unknown;
+    };
+    if (
+      typeof body.title !== 'string' ||
+      body.title.trim().length < 1 ||
+      body.title.trim().length > 100 ||
+      typeof body.description !== 'string' ||
+      body.description.length > 500 ||
+      (body.visibility !== 'PUBLIC' && body.visibility !== 'LINK_ONLY') ||
+      ![60, 120, 300].includes(body.durationMinutes as number)
+    ) {
+      response
+        .status(400)
+        .json({
+          error: 'title, description, visibility, and a 60/120/300 minute duration are required.',
+        });
+      return;
+    }
+    const created = await runtime.roomControl.create({
+      userId,
+      title: body.title.trim(),
+      description: body.description.trim(),
+      visibility: body.visibility,
+      durationMinutes: body.durationMinutes as 60 | 120 | 300,
+    });
+    response.status(201).json(created);
+  });
+
+  app.get('/v1/rooms', async (request, response) => {
+    if (!authenticatedUserId(request)) {
+      response.status(401).json({ error: 'Authentication is required.' });
+      return;
+    }
+    response.status(200).json({ rooms: await runtime.roomControl.listPublic() });
+  });
+
+  app.get('/v1/rooms/:roomId', async (request, response) => {
+    if (!authenticatedUserId(request)) {
+      response.status(401).json({ error: 'Authentication is required.' });
+      return;
+    }
+    try {
+      response.status(200).json(await runtime.roomControl.get(request.params.roomId));
+    } catch {
+      response.status(404).json({ error: 'Room was not found.' });
+    }
+  });
+
+  app.post('/v1/rooms/:roomId/end', async (request, response) => {
+    const userId = authenticatedUserId(request);
+    if (!userId) {
+      response.status(401).json({ error: 'Authentication is required.' });
+      return;
+    }
+    try {
+      await runtime.roomControl.endAsHost(request.params.roomId, userId);
+      response.status(204).end();
+    } catch (error) {
+      response
+        .status(error instanceof Error && error.message.includes('Only the room host') ? 403 : 404)
+        .json({ error: error instanceof Error ? error.message : 'Unable to end room.' });
+    }
+  });
+
   const server = http.createServer(app);
   const websocketServer = new WebSocketServer({ noServer: true });
 
