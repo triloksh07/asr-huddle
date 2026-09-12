@@ -1,56 +1,52 @@
-import { endRoom, endRoomSession } from "@repo/domain";
-import { ApplicationError } from "../errors.js";
-import type {
-  ApplicationClock,
-  EventPublisher,
-  Transaction,
-} from "../ports.js";
-
+import {
+  endRoom,
+  endRoomSession,
+  markRoomEnded,
+  markSessionDisconnected,
+  markSessionIntentionalLeave,
+} from '@repo/domain';
+import { ApplicationError } from '../errors.js';
+import type { ApplicationClock, EventPublisher, Transaction } from '../ports.js';
 export interface EndRoomCommand {
   readonly roomId: string;
-  readonly reason?: "HOST_ENDED" | "EXPIRY" | "EMPTY";
+  readonly reason?: 'HOST_ENDED' | 'EXPIRY' | 'EMPTY';
 }
-
 export class EndRoom {
   constructor(
     private readonly transaction: Transaction,
     private readonly clock: ApplicationClock,
-    private readonly events: EventPublisher,
+    private readonly events: EventPublisher
   ) {}
-
   async execute(command: EndRoomCommand): Promise<void> {
-    let eventSessionId: string | undefined;
     const endedAt = this.clock.now();
-
-    const ended = await this.transaction.run(async ({ rooms, roomSessions }) => {
-      const room = await rooms.findById(command.roomId);
-      if (!room) {
-        throw new ApplicationError("NOT_FOUND", "Room was not found.");
+    const result = await this.transaction.run(
+      async ({ rooms, roomSessions, participants, participantSessions }) => {
+        const room = await rooms.findById(command.roomId);
+        if (!room) throw new ApplicationError('NOT_FOUND', 'Room was not found.');
+        const session = await roomSessions.findActiveByRoomId(command.roomId);
+        if (!session) return { changed: false as const };
+        await rooms.save(endRoom(room, endedAt));
+        await roomSessions.save(endRoomSession(session, endedAt));
+        const roomParticipants = await participants.findByRoomSession(session.id);
+        for (const participant of roomParticipants) {
+          await participants.save(markRoomEnded(participant, endedAt));
+          for (const participantSession of await participantSessions.findByParticipantId(
+            participant.id
+          )) {
+            const disconnected = markSessionDisconnected(participantSession, endedAt, null);
+            await participantSessions.save(markSessionIntentionalLeave(disconnected));
+          }
+        }
+        return { changed: true as const, roomSessionId: session.id };
       }
-
-      const session = await roomSessions.findActiveByRoomId(command.roomId);
-      if (!session) {
-        return { changed: false as const };
-      }
-
-      const endedRoom = endRoom(room, endedAt);
-      const endedSession = endRoomSession(session, endedAt);
-      await rooms.save(endedRoom);
-      await roomSessions.save(endedSession);
-      eventSessionId = session.id;
-      return { changed: true as const };
-    });
-
-    if (!ended.changed) {
-      return;
-    }
-
+    );
+    if (!result.changed) return;
     await this.events.publish({
-      type: "room.ended",
+      type: 'room.ended',
       occurredAt: endedAt,
       roomId: command.roomId,
-      roomSessionId: eventSessionId,
-      payload: { reason: command.reason ?? "HOST_ENDED" },
+      roomSessionId: result.roomSessionId,
+      payload: { reason: command.reason ?? 'HOST_ENDED' },
     });
   }
 }

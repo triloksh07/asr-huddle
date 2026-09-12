@@ -6,16 +6,7 @@ import {
   type ConnectionId,
 } from '@repo/domain';
 import { ApplicationError } from '../errors.js';
-import type {
-  ApplicationClock,
-  EventPublisher,
-  ParticipantRepository,
-  ParticipantSessionRepository,
-  RoomRepository,
-  RoomSessionRepository,
-  UserRepository,
-} from '../ports.js';
-
+import type { ApplicationClock, EventPublisher, Transaction } from '../ports.js';
 export interface ReconnectRoomCommand {
   readonly roomId: string;
   readonly participantId: string;
@@ -23,7 +14,6 @@ export interface ReconnectRoomCommand {
   readonly connectionId: ConnectionId;
   readonly userId: string;
 }
-
 export interface ReconnectRoomResult {
   readonly roomId: string;
   readonly roomSessionId: string;
@@ -34,112 +24,79 @@ export interface ReconnectRoomResult {
   readonly selfMuted: boolean;
   readonly moderatorMuted: boolean;
 }
-
 export class ReconnectRoom {
   constructor(
-    private readonly users: UserRepository,
-    private readonly rooms: RoomRepository,
-    private readonly sessions: RoomSessionRepository,
-    private readonly participants: ParticipantRepository,
-    private readonly participantSessions: ParticipantSessionRepository,
+    private readonly transaction: Transaction,
     private readonly clock: ApplicationClock,
     private readonly events: EventPublisher
   ) {}
-
   async execute(command: ReconnectRoomCommand): Promise<ReconnectRoomResult> {
-    const user = await this.users.findById(command.userId);
-    if (!user) {
-      throw new ApplicationError('UNAUTHENTICATED', 'Authenticated user was not found.');
-    }
-
-    const room = await this.rooms.findById(command.roomId);
-    if (!room) throw new ApplicationError('NOT_FOUND', 'Room was not found.');
-
-    const roomSession = await this.sessions.findActiveByRoomId(command.roomId);
-    if (!roomSession) {
-      throw new ApplicationError('ROOM_ENDED', 'The room is not active.');
-    }
-    assertRoomSessionActive(roomSession);
-
-    const participant = await this.participants.findById(command.participantId);
-    if (!participant) {
-      throw new ApplicationError('NOT_FOUND', 'Participant was not found.');
-    }
-
-    if (
-      participant.roomId !== room.id ||
-      participant.roomSessionId !== roomSession.id ||
-      participant.userId !== user.id
-    ) {
-      throw new ApplicationError(
-        'FORBIDDEN',
-        'Participant does not belong to this authenticated room session.'
-      );
-    }
-
-    if (participant.status !== 'DISCONNECTED') {
-      throw new ApplicationError(
-        'CONFLICT',
-        'Participant is not in a recoverable disconnected state.'
-      );
-    }
-
-    const session = await this.participantSessions.findById(command.participantSessionId);
-    if (!session) {
-      throw new ApplicationError('NOT_FOUND', 'Participant session was not found.');
-    }
-
-    if (session.participantId !== participant.id) {
-      throw new ApplicationError(
-        'FORBIDDEN',
-        'Participant session does not belong to the participant.'
-      );
-    }
-
-    if (!canRecoverParticipantSession(session, this.clock.now())) {
-      throw new ApplicationError('CONFLICT', 'The participant recovery window has expired.');
-    }
-
-    const activeSession = await this.participantSessions.findActiveByParticipantId(participant.id);
-    if (activeSession && activeSession.id !== session.id) {
-      throw new ApplicationError('CONFLICT', 'Participant already has another active session.');
-    }
-
-    const now = this.clock.now();
-    const reconnectedParticipant = markReconnected(participant);
-    const reconnectedSession = markSessionReconnected(session, command.connectionId, now);
-
-    await this.participants.save(reconnectedParticipant);
-    await this.participantSessions.save(reconnectedSession);
-
+    const result = await this.transaction.run(
+      async ({ users, rooms, roomSessions, participants, participantSessions }) => {
+        const user = await users.findById(command.userId);
+        if (!user)
+          throw new ApplicationError('UNAUTHENTICATED', 'Authenticated user was not found.');
+        const room = await rooms.findById(command.roomId);
+        if (!room) throw new ApplicationError('NOT_FOUND', 'Room was not found.');
+        const roomSession = await roomSessions.findActiveByRoomId(command.roomId);
+        if (!roomSession) throw new ApplicationError('ROOM_ENDED', 'The room is not active.');
+        assertRoomSessionActive(roomSession);
+        const participant = await participants.findById(command.participantId);
+        if (!participant) throw new ApplicationError('NOT_FOUND', 'Participant was not found.');
+        if (
+          participant.roomId !== room.id ||
+          participant.roomSessionId !== roomSession.id ||
+          participant.userId !== user.id
+        )
+          throw new ApplicationError(
+            'FORBIDDEN',
+            'Participant does not belong to this authenticated room session.'
+          );
+        if (participant.status !== 'DISCONNECTED')
+          throw new ApplicationError(
+            'CONFLICT',
+            'Participant is not in a recoverable disconnected state.'
+          );
+        const session = await participantSessions.findById(command.participantSessionId);
+        if (!session) throw new ApplicationError('NOT_FOUND', 'Participant session was not found.');
+        if (session.participantId !== participant.id)
+          throw new ApplicationError(
+            'FORBIDDEN',
+            'Participant session does not belong to the participant.'
+          );
+        const now = this.clock.now();
+        if (!canRecoverParticipantSession(session, now))
+          throw new ApplicationError('CONFLICT', 'The participant recovery window has expired.');
+        const activeSession = await participantSessions.findActiveByParticipantId(participant.id);
+        if (activeSession && activeSession.id !== session.id)
+          throw new ApplicationError('CONFLICT', 'Participant already has another active session.');
+        const updatedParticipant = markReconnected(participant);
+        const updatedSession = markSessionReconnected(session, command.connectionId, now);
+        await participants.save(updatedParticipant);
+        await participantSessions.save(updatedSession);
+        return {
+          roomId: participant.roomId,
+          roomSessionId: participant.roomSessionId,
+          participantId: participant.id,
+          participantSessionId: session.id,
+          userId: participant.userId,
+          managementRole: updatedParticipant.managementRole,
+          audioRole: updatedParticipant.audioRole,
+          selfMuted: updatedParticipant.selfMuted,
+          moderatorMuted: updatedParticipant.moderatorMuted,
+        };
+      }
+    );
     await this.events.publish({
       type: 'participant.reconnected',
-      occurredAt: now,
-      roomId: participant.roomId,
-      roomSessionId: participant.roomSessionId,
-      participantId: participant.id,
-      participantSessionId: session.id,
-      userId: participant.userId,
-      payload: {
-        participantId: participant.id,
-        participantSessionId: session.id,
-        managementRole: reconnectedParticipant.managementRole,
-        audioRole: reconnectedParticipant.audioRole,
-        selfMuted: reconnectedParticipant.selfMuted,
-        moderatorMuted: reconnectedParticipant.moderatorMuted,
-        mediaRecoveryRequired: true,
-      },
+      occurredAt: this.clock.now(),
+      roomId: result.roomId,
+      roomSessionId: result.roomSessionId,
+      participantId: result.participantId,
+      participantSessionId: result.participantSessionId,
+      userId: result.userId,
+      payload: { ...result, mediaRecoveryRequired: true },
     });
-
-    return {
-      roomId: participant.roomId,
-      roomSessionId: participant.roomSessionId,
-      participantId: participant.id,
-      participantSessionId: session.id,
-      managementRole: reconnectedParticipant.managementRole,
-      audioRole: reconnectedParticipant.audioRole,
-      selfMuted: reconnectedParticipant.selfMuted,
-      moderatorMuted: reconnectedParticipant.moderatorMuted,
-    };
+    return result;
   }
 }

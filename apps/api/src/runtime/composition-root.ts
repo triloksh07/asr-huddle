@@ -143,14 +143,8 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
   const delegateHost = new DelegateHost(participants, clock, events);
 
   const join = new JoinRoom(transaction, ids, clock, events);
-  const leave = new LeaveRoom(participants, participantSessions, clock, events, delegateHost);
-  const disconnect = new DisconnectRoom(
-    participants,
-    participantSessions,
-    clock,
-    events,
-    delegateHost
-  );
+  const leave = new LeaveRoom(transaction, clock, events, delegateHost);
+  const disconnect = new DisconnectRoom(transaction, clock, events, delegateHost);
 
   const requestSpeaker = new RequestSpeaker(
     participants,
@@ -199,15 +193,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     }
   );
 
-  const reconnect = new ReconnectRoom(
-    users,
-    rooms,
-    roomSessions,
-    participants,
-    participantSessions,
-    clock,
-    events
-  );
+  const reconnect = new ReconnectRoom(transaction, clock, events);
 
   const lifecycle = new ApiRoomLifecycleRuntime(
     new ProcessRoomLifecycle(
