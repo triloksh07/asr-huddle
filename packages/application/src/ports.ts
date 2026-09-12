@@ -12,8 +12,17 @@ import type {
 export interface UserRecord {
   readonly id: string;
   readonly name: string;
+  readonly email?: string;
   readonly avatarUrl: string | null;
   readonly bio: string | null;
+}
+export interface CredentialUserRecord extends UserRecord {
+  readonly email: string;
+  readonly passwordHash: string;
+}
+export interface CredentialUserRepository extends UserRepository {
+  findByEmail(email: string): Promise<CredentialUserRecord | null>;
+  create(user: CredentialUserRecord): Promise<void>;
 }
 export interface UserRepository {
   findById(userId: string): Promise<UserRecord | null>;

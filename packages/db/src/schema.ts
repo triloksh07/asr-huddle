@@ -44,12 +44,17 @@ export const users = pgTable(
   {
     id: uuid('id').defaultRandom().primaryKey(),
     name: varchar('name', { length: 120 }).notNull(),
+    email: varchar('email', { length: 320 }).notNull(),
+    passwordHash: varchar('password_hash', { length: 255 }).notNull(),
     avatarUrl: varchar('avatar_url', { length: 2048 }),
     bio: varchar('bio', { length: 500 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  t => ({ usersCreatedAtIdx: index('users_created_at_idx').on(t.createdAt) })
+  t => ({
+    usersEmailUniqueIdx: uniqueIndex('users_email_unique_idx').on(t.email),
+    usersCreatedAtIdx: index('users_created_at_idx').on(t.createdAt),
+  })
 );
 
 export const rooms = pgTable(

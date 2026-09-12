@@ -4,7 +4,7 @@ import type {
   RoomSessionState,
   RoomState,
 } from '@repo/domain';
-import { UserRecord } from '@repo/application';
+import { CredentialUserRecord, UserRecord } from '@repo/application';
 import {
   participantSessionStatusEnum,
   participantStatusEnum,
@@ -15,6 +15,8 @@ import {
 type UserRow = {
   id: string;
   name: string;
+  email: string;
+  passwordHash: string;
   avatarUrl: string | null;
   bio: string | null;
 };
@@ -62,7 +64,10 @@ type ParticipantSessionRow = {
 };
 
 export function mapUser(row: UserRow): UserRecord {
-  return { id: row.id, name: row.name, avatarUrl: row.avatarUrl, bio: row.bio };
+  return { id: row.id, name: row.name, email: row.email, avatarUrl: row.avatarUrl, bio: row.bio };
+}
+export function mapCredentialUser(row: UserRow): CredentialUserRecord {
+  return { ...mapUser(row), email: row.email, passwordHash: row.passwordHash };
 }
 export function mapRoom(row: RoomRow): RoomState {
   return {
