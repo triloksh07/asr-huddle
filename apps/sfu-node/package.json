@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev-old": "node --watch --loader ts-node/esm src/index.ts",
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
@@ -24,7 +23,6 @@
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
     "@types/node": "^20.14.10",
-    "ts-node": "^10.9.2",
     "tsx": "^4.16.2",
     "typescript": "^5.5.4",
     "vitest": "^3.2.4"
