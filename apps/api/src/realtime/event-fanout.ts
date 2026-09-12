@@ -13,6 +13,7 @@ export class RedisRealtimeEventFanout {
   constructor(
     private readonly redis: Redis,
     private readonly registry: ConnectionRegistry,
+    private readonly onRoomEnded?: (roomId: string, reason: string) => Promise<void>,
   ) {
     this.subscriber = redis.duplicate();
   }
@@ -54,6 +55,17 @@ export class RedisRealtimeEventFanout {
         payload: message.payload,
       },
     );
+
+    if (event.type === "room.ended") {
+      const reason =
+        typeof event.payload === "object" &&
+        event.payload !== null &&
+        "reason" in event.payload &&
+        typeof event.payload.reason === "string"
+          ? event.payload.reason
+          : "HOST_ENDED";
+      await this.onRoomEnded?.(event.roomId, reason);
+    }
   }
 
   async close(): Promise<void> {

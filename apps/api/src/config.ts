@@ -28,6 +28,7 @@ export interface ApiConfig {
   readonly mediaBaseUrl: string;
   readonly authMode: AuthMode;
   readonly participantDisconnectRecoveryMs: number;
+  readonly roomLifecycleIntervalMs: number;
 }
 
 export function loadConfig(): ApiConfig {
@@ -47,6 +48,11 @@ export function loadConfig(): ApiConfig {
       process.env.PARTICIPANT_DISCONNECT_RECOVERY_MS,
       30_000,
       'PARTICIPANT_DISCONNECT_RECOVERY_MS'
+    ),
+    roomLifecycleIntervalMs: positiveInteger(
+      process.env.ROOM_LIFECYCLE_INTERVAL_MS,
+      30_000,
+      'ROOM_LIFECYCLE_INTERVAL_MS'
     ),
   };
 }
