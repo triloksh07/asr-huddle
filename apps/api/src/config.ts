@@ -11,6 +11,12 @@ function required(name: string): string {
   return value;
 }
 
+function requiredSecret(name: string): string {
+  const value = required(name);
+  if (value.length < 32) throw new Error(`${name} must be at least 32 characters.`);
+  return value;
+}
+
 function positiveInteger(value: string | undefined, fallback: number, name: string): number {
   const parsed = Number(value ?? fallback);
   if (!Number.isInteger(parsed) || parsed < 0) {
@@ -29,6 +35,9 @@ export interface ApiConfig {
   readonly authMode: AuthMode;
   readonly participantDisconnectRecoveryMs: number;
   readonly roomLifecycleIntervalMs: number;
+  readonly jwtSecret: string;
+  readonly jwtIssuer: string;
+  readonly jwtTtlSeconds: number;
 }
 
 export function loadConfig(): ApiConfig {
@@ -54,5 +63,8 @@ export function loadConfig(): ApiConfig {
       30_000,
       'ROOM_LIFECYCLE_INTERVAL_MS'
     ),
+    jwtSecret: requiredSecret('JWT_SECRET'),
+    jwtIssuer: process.env.JWT_ISSUER ?? 'asr-huddle-api',
+    jwtTtlSeconds: positiveInteger(process.env.JWT_TTL_SECONDS, 3600, 'JWT_TTL_SECONDS'),
   };
 }

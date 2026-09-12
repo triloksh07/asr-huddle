@@ -39,7 +39,7 @@ import { MediaController } from '../media/media-controller.js';
 import { RpcMediaService } from '../media/rpc-media-service.js';
 import {
   DevelopmentQueryAuthenticator,
-  RejectingRealtimeAuthenticator,
+  JwtRealtimeAuthenticator,
 } from '../realtime/authenticated-connection.js';
 import { CommandRouter } from '../realtime/command-router.js';
 import { ConnectionRegistry } from '../realtime/connection-registry.js';
@@ -76,6 +76,8 @@ import { RedisEventPublisher } from './event-publisher.js';
 import { ApiRoomLifecycleRuntime, type RoomLifecycleRuntime } from './room-lifecycle.js';
 import { RuntimeMetrics } from '../observability/runtime-metrics.js';
 import { StructuredLogger } from '../observability/structured-logger.js';
+import { AuthService } from '../auth/auth-service.js';
+import { JwtService } from '../auth/jwt.js';
 
 class SystemClock {
   now() {
@@ -97,6 +99,7 @@ export interface ApiRuntime {
   readonly redis: ReturnType<typeof createRedisClient>;
   readonly lifecycle: RoomLifecycleRuntime;
   readonly metrics: RuntimeMetrics;
+  readonly auth: AuthService;
   readonly close: () => Promise<void>;
 }
 
@@ -112,6 +115,8 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
   await redis.connect();
 
   const users = new PostgresUserRepository(database.db);
+  const jwt = new JwtService(config.jwtSecret, config.jwtIssuer, config.jwtTtlSeconds);
+  const auth = new AuthService(users, jwt);
   const rooms = new PostgresRoomRepository(database.db);
   const roomSessions = new PostgresRoomSessionRepository(database.db);
   const participants = new PostgresParticipantRepository(database.db);
@@ -256,7 +261,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
   const authenticator =
     config.authMode === 'development'
       ? new DevelopmentQueryAuthenticator(users)
-      : new RejectingRealtimeAuthenticator();
+      : new JwtRealtimeAuthenticator(users, jwt);
 
   const realtime = createRealtimeRuntime(
     router,
@@ -266,6 +271,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     mediaController,
     config.participantDisconnectRecoveryMs,
     metrics,
+    auth,
     logger
   );
   lifecycle.start();
