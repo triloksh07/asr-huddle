@@ -1,3 +1,25 @@
 <!doctype html>
-<html><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>ASR Huddle Audio Test</title></head>
-<body><main><h1>ASR Huddle — Audio Test</h1><label>WebSocket URL <input id="ws" value="ws://localhost:3000/ws" /></label><label>Room ID <input id="room" /></label><button id="join">Join</button><button id="mic" disabled>Enable microphone</button><pre id="log"></pre><div id="audio"></div></main><script type="module" src="/src/main.ts"></script></body></html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>ASR Huddle</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <main id="app" class="shell" aria-live="polite">
+      <header class="row between">
+        <div>
+          <h1>ASR Huddle</h1>
+          <p class="muted">Live audio rooms</p>
+        </div>
+      </header>
+      <section class="surface stack">
+        <h2>Loading ASR Huddle</h2>
+        <p class="muted">Preparing your secure room experience…</p>
+      </section>
+    </main>
+    <noscript><p>ASR Huddle requires JavaScript to manage live audio rooms.</p></noscript>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
