@@ -26,8 +26,8 @@ export class PostgresRoomRepository implements RoomRepository {
       .values({
         id: room.id,
         hostUserId: room.hostUserId,
-        title: room.title,
-        description: room.description,
+        title: room.title ?? 'Untitled room',
+        description: room.description ?? '',
         visibility: room.visibility,
         durationMinutes: room.durationMinutes,
         status: room.status,
@@ -38,8 +38,8 @@ export class PostgresRoomRepository implements RoomRepository {
         target: rooms.id,
         set: {
           hostUserId: room.hostUserId,
-          title: room.title,
-          description: room.description,
+          title: room.title ?? 'Untitled room',
+          description: room.description ?? '',
           visibility: room.visibility,
           durationMinutes: room.durationMinutes,
           status: room.status,

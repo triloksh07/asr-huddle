@@ -18,6 +18,9 @@ class MemoryRooms {
   async save(value: ReturnType<typeof createRoom>) {
     this.values.set(value.id, value);
   }
+  async findActivePublic() {
+    return [...this.values.values()].filter(value => value.status === 'ACTIVE' && value.visibility === 'PUBLIC');
+  }
 }
 
 class MemoryRoomSessions {
