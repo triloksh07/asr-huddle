@@ -134,6 +134,16 @@ export const participants = pgTable(
       t.status
     ),
     participantsUserIdIdx: index('participants_user_id_idx').on(t.userId),
+    participantsOneConnectedUserPerSessionIdx: uniqueIndex(
+      'participants_one_connected_user_per_session_idx'
+    )
+      .on(t.roomSessionId, t.userId)
+      .where(sql`status = 'CONNECTED'`),
+    participantsOneActiveHostPerSessionIdx: uniqueIndex(
+      'participants_one_active_host_per_session_idx'
+    )
+      .on(t.roomSessionId)
+      .where(sql`management_role = 'HOST' AND status IN ('CONNECTED', 'DISCONNECTED')`),
   })
 );
 
@@ -159,6 +169,11 @@ export const participantSessions = pgTable(
     participantSessionsConnectionIdIdx: uniqueIndex('participant_sessions_connection_id_idx').on(
       t.connectionId
     ),
+    participantSessionsOneActivePerParticipantIdx: uniqueIndex(
+      'participant_sessions_one_active_per_participant_idx'
+    )
+      .on(t.participantId)
+      .where(sql`status = 'ACTIVE'`),
   })
 );
 

@@ -31,6 +31,7 @@ import {
   PostgresRoomSessionRepository,
   PostgresSpeakerRequestRepository,
   PostgresUserRepository,
+  PostgresTransaction,
   createDatabase,
 } from '@repo/db';
 import { createRedisClient } from '@repo/redis-models';
@@ -126,6 +127,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
   const participantSessions = new PostgresParticipantSessionRepository(database.db);
   const requests = new PostgresSpeakerRequestRepository(database.db);
   const invitations = new PostgresInvitationRepository(database.db);
+  const transaction = new PostgresTransaction(database.db);
   const ids = new UuidGenerator();
   const clock = new SystemClock();
   const metrics = new RuntimeMetrics();
@@ -133,23 +135,14 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
   const events = new RedisEventPublisher(redis, metrics, logger);
   const registry = new ConnectionRegistry();
 
-  const createRoom = new CreateRoom(rooms, roomSessions, ids, clock);
-  const endRoom = new EndRoom(rooms, roomSessions, clock, events);
+  const createRoom = new CreateRoom(transaction, ids, clock);
+  const endRoom = new EndRoom(transaction, clock, events);
   const roomControl = new RoomControl(rooms, createRoom, endRoom);
   const snapshot = new GetRoomSnapshot(rooms, roomSessions, participants);
 
   const delegateHost = new DelegateHost(participants, clock, events);
 
-  const join = new JoinRoom(
-    users,
-    rooms,
-    roomSessions,
-    participants,
-    participantSessions,
-    ids,
-    clock,
-    events
-  );
+  const join = new JoinRoom(transaction, ids, clock, events);
   const leave = new LeaveRoom(participants, participantSessions, clock, events, delegateHost);
   const disconnect = new DisconnectRoom(
     participants,

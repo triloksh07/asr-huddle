@@ -65,9 +65,21 @@ export interface IdGenerator {
 export interface ApplicationClock {
   now(): Date;
 }
-export interface Transaction {
-  run<T>(work: () => Promise<T>): Promise<T>;
+
+export interface TransactionScope {
+  readonly users: UserRepository;
+  readonly rooms: RoomRepository;
+  readonly roomSessions: RoomSessionRepository;
+  readonly participants: ParticipantRepository;
+  readonly participantSessions: ParticipantSessionRepository;
+  readonly speakerRequests: SpeakerRequestRepository;
+  readonly invitations: InvitationRepository;
 }
+
+export interface Transaction {
+  run<T>(work: (scope: TransactionScope) => Promise<T>): Promise<T>;
+}
+
 export interface DomainEvent {
   readonly type: string;
   readonly occurredAt: Date;
@@ -81,6 +93,7 @@ export interface DomainEvent {
 export interface EventPublisher {
   publish(event: DomainEvent): Promise<void>;
 }
+
 export interface ParticipantSnapshot {
   readonly id: string;
   readonly userId: string;

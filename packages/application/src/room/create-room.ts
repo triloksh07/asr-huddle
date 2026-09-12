@@ -7,8 +7,7 @@ import {
 import type {
   ApplicationClock,
   IdGenerator,
-  RoomRepository,
-  RoomSessionRepository,
+  Transaction,
 } from "../ports.js";
 
 export interface CreateRoomCommand {
@@ -26,8 +25,7 @@ export interface CreateRoomResult {
 
 export class CreateRoom {
   constructor(
-    private readonly rooms: RoomRepository,
-    private readonly sessions: RoomSessionRepository,
+    private readonly transaction: Transaction,
     private readonly ids: IdGenerator,
     private readonly clock: ApplicationClock,
   ) {}
@@ -50,8 +48,10 @@ export class CreateRoom {
       startedAt: now,
     });
 
-    await this.rooms.save(room);
-    await this.sessions.save(session);
+    await this.transaction.run(async ({ rooms, roomSessions }) => {
+      await rooms.save(room);
+      await roomSessions.save(session);
+    });
 
     return { room, session };
   }
