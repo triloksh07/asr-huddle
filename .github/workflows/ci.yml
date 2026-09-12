@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v3
+      - uses: pnpm/action-setup@v6
         with: { version: 9, run_install: false }
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: 'pnpm' }
@@ -44,7 +44,7 @@ jobs:
         options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v3
+      - uses: pnpm/action-setup@v6
         with: { version: 9, run_install: false }
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: 'pnpm' }
@@ -60,7 +60,7 @@ jobs:
     needs: [lint-and-typecheck, test]
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v3
+      - uses: pnpm/action-setup@v6
         with: { version: 9, run_install: false }
       - uses: actions/setup-node@v4
         with: { node-version: 20, cache: 'pnpm' }
