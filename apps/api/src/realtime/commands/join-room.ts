@@ -14,6 +14,7 @@ import type {
 } from "../types.js";
 import { realtimeErrors } from "../errors.js";
 import { bindRoomSession } from "../types.js";
+import type { RedisRealtimeEventSequence } from "../event-sequence.js";
 
 const payloadSchema = z.object({
   roomId: z.string().min(1),
@@ -25,6 +26,7 @@ export class JoinRoomRealtimeCommand implements RealtimeCommandHandler {
   constructor(
     private readonly useCase: JoinRoom,
     private readonly getRoomSnapshot: GetRoomSnapshot,
+    private readonly eventSequence: RedisRealtimeEventSequence,
   ) {}
 
   async handle(
@@ -55,7 +57,8 @@ export class JoinRoomRealtimeCommand implements RealtimeCommandHandler {
     const snapshot = await this.getRoomSnapshot.execute({
       roomId: result.roomId as RoomId,
     });
+    const sequence = await this.eventSequence.current(result.roomId);
 
-    return { ...result, snapshot };
+    return { ...result, snapshot, sequence };
   }
 }

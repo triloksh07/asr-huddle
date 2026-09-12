@@ -1,10 +1,16 @@
 import type { DomainEvent } from "@repo/application";
 import type { Redis } from "ioredis";
-import { randomUUID } from "node:crypto";
 import type { ConnectionRegistry } from "./connection-registry.js";
 import type { RealtimeEvent } from "./types.js";
 
 export const REALTIME_EVENT_CHANNEL = "asr-huddle:events";
+
+interface PublishedRealtimeEvent extends Omit<DomainEvent, "occurredAt"> {
+  eventId: string;
+  sequence: number;
+  occurredAt: string;
+  roomId: string;
+}
 
 export class RedisRealtimeEventFanout {
   private readonly subscriber: Redis;
@@ -31,29 +37,38 @@ export class RedisRealtimeEventFanout {
   }
 
   private async handle(raw: string): Promise<void> {
-    let event: DomainEvent;
+    let event: PublishedRealtimeEvent;
     try {
-      event = JSON.parse(raw) as DomainEvent;
+      event = JSON.parse(raw) as PublishedRealtimeEvent;
     } catch (error) {
       console.error("Ignoring malformed realtime event.", error);
       return;
     }
 
-    if (!event.roomId) return;
+    if (
+      !event.roomId ||
+      typeof event.eventId !== "string" ||
+      !Number.isSafeInteger(event.sequence) ||
+      event.sequence < 1 ||
+      typeof event.type !== "string" ||
+      typeof event.occurredAt !== "string"
+    ) {
+      console.error("Ignoring invalid realtime event envelope.");
+      return;
+    }
 
     const message: RealtimeEvent = {
+      eventId: event.eventId,
+      sequence: event.sequence,
       type: event.type,
+      occurredAt: event.occurredAt,
+      roomId: event.roomId as RealtimeEvent["roomId"],
       payload: event.payload ?? event,
     };
 
     await this.registry.broadcastRoom(
       event.roomId as Parameters<ConnectionRegistry["broadcastRoom"]>[0],
-      {
-        requestId: randomUUID(),
-        type: message.type,
-        ok: true,
-        payload: message.payload,
-      },
+      message,
     );
 
     if (event.type === "room.ended") {

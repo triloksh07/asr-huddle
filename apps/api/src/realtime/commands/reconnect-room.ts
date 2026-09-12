@@ -1,9 +1,16 @@
 import { z } from 'zod';
 import type { GetRoomSnapshot, ReconnectRoom } from '@repo/application';
-import type { ParticipantId, ParticipantSessionId, RoomId, UserId } from '@repo/domain';
+import type {
+  ParticipantId,
+  ParticipantSessionId,
+  RoomId,
+  RoomSessionId,
+  UserId,
+} from '@repo/domain';
 import type { RealtimeCommandContext, RealtimeCommandHandler, RealtimeEnvelope } from '../types.js';
 import { bindRoomSession } from '../types.js';
 import { realtimeErrors } from '../errors.js';
+import type { RedisRealtimeEventSequence } from '../event-sequence.js';
 
 const payloadSchema = z.object({
   roomId: z.string().min(1),
@@ -16,7 +23,8 @@ export class ReconnectRoomRealtimeCommand implements RealtimeCommandHandler {
 
   constructor(
     private readonly useCase: ReconnectRoom,
-    private readonly snapshot: GetRoomSnapshot
+    private readonly snapshot: GetRoomSnapshot,
+    private readonly eventSequence: RedisRealtimeEventSequence
   ) {}
 
   async handle(context: RealtimeCommandContext, envelope: RealtimeEnvelope): Promise<unknown> {
@@ -36,7 +44,7 @@ export class ReconnectRoomRealtimeCommand implements RealtimeCommandHandler {
 
     bindRoomSession(context.connection, {
       roomId: result.roomId as RoomId,
-      roomSessionId: result.roomSessionId as any,
+      roomSessionId: result.roomSessionId as RoomSessionId,
       participantId: result.participantId as ParticipantId,
       participantSessionId: result.participantSessionId as ParticipantSessionId,
     });
@@ -44,10 +52,12 @@ export class ReconnectRoomRealtimeCommand implements RealtimeCommandHandler {
     const roomSnapshot = await this.snapshot.execute({
       roomId: result.roomId,
     });
+    const sequence = await this.eventSequence.current(result.roomId);
 
     return {
       ...result,
       snapshot: roomSnapshot,
+      sequence,
       mediaRecoveryRequired: true,
     };
   }

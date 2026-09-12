@@ -74,6 +74,7 @@ import {
   RespondInvitationRealtimeCommand,
 } from '../realtime/commands/speaker-workflow.js';
 import { RedisRealtimeEventFanout } from '../realtime/event-fanout.js';
+import { RedisRealtimeEventSequence } from '../realtime/event-sequence.js';
 import { createRealtimeRuntime, type RealtimeRuntime } from '../realtime/ws-runtime.js';
 import { RedisEventPublisher } from './event-publisher.js';
 import { ApiRoomLifecycleRuntime, type RoomLifecycleRuntime } from './room-lifecycle.js';
@@ -133,6 +134,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
   const metrics = new RuntimeMetrics();
   const logger = new StructuredLogger();
   const events = new RedisEventPublisher(redis, metrics, logger);
+  const eventSequence = new RedisRealtimeEventSequence(redis);
   const registry = new ConnectionRegistry();
 
   const createRoom = new CreateRoom(transaction, ids, clock);
@@ -211,10 +213,10 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
 
   const router = new CommandRouter();
 
-  router.register(new JoinRoomRealtimeCommand(join, snapshot));
+  router.register(new JoinRoomRealtimeCommand(join, snapshot, eventSequence));
   router.register(new LeaveRoomRealtimeCommand(leave));
   router.register(new EndRoomRealtimeCommand(roomControl));
-  router.register(new ReconnectRoomRealtimeCommand(reconnect, snapshot));
+  router.register(new ReconnectRoomRealtimeCommand(reconnect, snapshot, eventSequence));
 
   router.register(new CreateMediaTransportCommand(mediaController));
   router.register(new ConnectMediaTransportCommand(mediaController));

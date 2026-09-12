@@ -40,8 +40,8 @@ export function createRealtimeRuntime(
       const userId = await authenticator.authenticate(request);
       const connectionId = randomUUID() as ConnectionId;
       const transport: RealtimeTransport = {
-        async send(response) {
-          socket.send(JSON.stringify(response));
+        async send(message) {
+          socket.send(JSON.stringify(message));
         },
         async close(code, reason) {
           socket.close(code, reason);
@@ -56,7 +56,7 @@ export function createRealtimeRuntime(
         registry,
         metrics
       );
-      logger?.info("realtime_connection_opened", { connectionId, userId });
+      logger?.info('realtime_connection_opened', { connectionId, userId });
 
       let finalized = false;
       const finalizeConnection = async () => {
@@ -90,7 +90,7 @@ export function createRealtimeRuntime(
         clearRoomSessionBinding(registered);
         registry.remove(connectionId);
         metrics?.recordConnectionClosed();
-        logger?.info("realtime_connection_closed", { connectionId, userId });
+        logger?.info('realtime_connection_closed', { connectionId, userId });
       };
 
       socket.on('message', async data => {

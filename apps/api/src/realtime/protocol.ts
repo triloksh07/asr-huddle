@@ -1,3 +1,10 @@
+export const realtimeProtocol = {
+  roomJoin: "room.join",
+  roomLeave: "room.leave",
+  roomEnd: "room.end",
+  roomReconnect: "room.reconnect",
+} as const;
+
 export const realtimeMediaProtocol = {
   transportCreate: "media.transport.create",
   transportConnect: "media.transport.connect",

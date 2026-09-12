@@ -1,5 +1,5 @@
 import type { ConnectionId, ParticipantId, UserId, RoomId } from '@repo/domain';
-import type { RealtimeConnection, RealtimeTransport, RealtimeResponse } from './types.js';
+import type { RealtimeConnection, RealtimeServerMessage, RealtimeTransport } from './types.js';
 
 export interface RegisteredConnection extends RealtimeConnection {
   transport: RealtimeTransport;
@@ -36,20 +36,20 @@ export class ConnectionRegistry {
 
   async broadcastRoom(
     roomId: RoomId,
-    response: RealtimeResponse,
-    exceptConnectionId?: ConnectionId
+    message: RealtimeServerMessage,
+    exceptConnectionId?: ConnectionId,
   ): Promise<void> {
     await Promise.all(
       this.getByRoom(roomId)
         .filter(connection => connection.connectionId !== exceptConnectionId)
-        .map(connection => connection.transport.send(response))
+        .map(connection => connection.transport.send(message)),
     );
   }
 
   async closeParticipant(
     participantId: ParticipantId,
     code = 4003,
-    reason = 'Removed from room'
+    reason = 'Removed from room',
   ): Promise<void> {
     const connection = this.getByParticipant(participantId);
     if (!connection) return;
