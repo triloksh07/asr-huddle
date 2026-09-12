@@ -9,6 +9,7 @@ import type {
 
 export interface EndRoomCommand {
   readonly roomId: string;
+  readonly reason?: "HOST_ENDED" | "EXPIRY" | "EMPTY";
 }
 
 export class EndRoom {
@@ -44,6 +45,7 @@ export class EndRoom {
       occurredAt: endedAt,
       roomId: command.roomId,
       roomSessionId: session.id,
+      payload: { reason: command.reason ?? "HOST_ENDED" },
     });
   }
 }

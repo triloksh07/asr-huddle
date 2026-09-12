@@ -2,6 +2,7 @@ export * from './ports.js';
 export * from './errors.js';
 export * from './room/create-room.js';
 export * from './room/end-room.js';
+export * from './room/process-room-lifecycle.js';
 export * from './room/get-room-snapshot.js';
 export * from './participant/join-room.js';
 export * from './participant/leave-room.js';

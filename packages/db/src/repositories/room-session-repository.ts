@@ -19,6 +19,13 @@ export class PostgresRoomSessionRepository implements RoomSessionRepository {
     return row ? mapRoomSession(row) : null;
   }
 
+  async findActive() {
+    const rows = await this.database.query.roomSessions.findMany({
+      where: eq(roomSessions.status, "ACTIVE"),
+    });
+    return rows.map(mapRoomSession);
+  }
+
   async save(session: RoomSessionState): Promise<void> {
     await this.database
       .insert(roomSessions)

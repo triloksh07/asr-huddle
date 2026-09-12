@@ -31,6 +31,9 @@ class MemorySessions {
   async save(session: ReturnType<typeof createRoomSession>) {
     this.data.set(session.id, session);
   }
+  async findActive() {
+    return [...this.data.values()].filter(session => session.status === 'ACTIVE');
+  }
 }
 
 class MemoryParticipants {
@@ -40,6 +43,13 @@ class MemoryParticipants {
   }
   async findByRoomSession(sessionId: string) {
     return [...this.data.values()].filter(participant => participant.roomSessionId === sessionId);
+  }
+  async findByUserAndRoomSession(userId: string, roomSessionId: string) {
+    return (
+      [...this.data.values()].find(
+        participant => participant.userId === userId && participant.roomSessionId === roomSessionId
+      ) ?? null
+    );
   }
   async save(participant: any) {
     this.data.set(participant.id, participant);
@@ -57,6 +67,9 @@ class MemoryParticipantSessions {
         session => session.participantId === participantId && session.disconnectedAt === null
       ) ?? null
     );
+  }
+  async findByParticipantId(participantId: string) {
+    return [...this.data.values()].filter(session => session.participantId === participantId);
   }
   async save(session: any) {
     this.data.set(session.id, session);
@@ -89,6 +102,7 @@ class FixedIds {
 }
 
 const clock = { now: () => new Date('2026-01-01T10:00:00.000Z') };
+const events = { publish: async () => undefined };
 
 describe('application use cases', () => {
   it('joins a user as a listener', async () => {
@@ -121,7 +135,8 @@ describe('application use cases', () => {
       participants,
       participantSessions,
       new FixedIds(),
-      clock
+      clock,
+      events
     ).execute({ roomId: 'room-1', userId: 'user-1', connectionId: 'conn-1' as ConnectionId });
 
     expect(participant.audioRole).toBe('LISTENER');
@@ -158,7 +173,8 @@ describe('application use cases', () => {
       participants,
       participantSessions,
       new FixedIds(),
-      clock
+      clock,
+      events
     ).execute({ roomId: 'room-1', userId: 'user-1', connectionId: 'conn-1' as ConnectionId });
 
     const useCase = new RequestSpeaker(participants, sessions, requests, new FixedIds(), clock);

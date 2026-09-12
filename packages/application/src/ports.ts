@@ -24,6 +24,7 @@ export interface RoomRepository {
 }
 export interface RoomSessionRepository {
   findActiveByRoomId(roomId: string): Promise<RoomSessionState | null>;
+  findActive(): Promise<readonly RoomSessionState[]>;
   save(session: RoomSessionState): Promise<void>;
 }
 export interface ParticipantRepository {
@@ -35,6 +36,7 @@ export interface ParticipantRepository {
 export interface ParticipantSessionRepository {
   findById(sessionId: string): Promise<ParticipantSessionState | null>;
   findActiveByParticipantId(participantId: string): Promise<ParticipantSessionState | null>;
+  findByParticipantId(participantId: string): Promise<readonly ParticipantSessionState[]>;
   save(session: ParticipantSessionState): Promise<void>;
 }
 export interface SpeakerRequestRepository {

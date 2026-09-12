@@ -25,6 +25,13 @@ export class PostgresParticipantSessionRepository implements ParticipantSessionR
     return row ? mapParticipantSession(row) : null;
   }
 
+  async findByParticipantId(participantId: string) {
+    const rows = await this.database.query.participantSessions.findMany({
+      where: eq(participantSessions.participantId, participantId),
+    });
+    return rows.map(mapParticipantSession);
+  }
+
   async save(session: ParticipantSessionState): Promise<void> {
     const status =
       session.disconnectedAt === null
