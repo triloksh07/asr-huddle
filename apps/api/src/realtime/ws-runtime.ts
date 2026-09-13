@@ -9,7 +9,6 @@ import {
 } from './authenticated-connection.js';
 import { createRealtimeSession } from './ws-session.js';
 import type { RealtimeTransport } from './types.js';
-import { clearRoomSessionBinding } from './types.js';
 import type { MediaController } from '../media/media-controller.js';
 import type { RuntimeMetrics } from '../observability/runtime-metrics.js';
 import type { StructuredLogger } from '../observability/structured-logger.js';
@@ -21,6 +20,7 @@ export interface WebSocketLike {
   on(event: 'close', listener: () => void): void;
   on(event: 'error', listener: (error: unknown) => void): void;
 }
+
 export interface RealtimeRuntime {
   accept(socket: WebSocketLike, request: unknown): Promise<void>;
 }
@@ -30,7 +30,7 @@ export function createRealtimeRuntime(
   registry: ConnectionRegistry,
   authenticator: RealtimeAuthenticator,
   disconnectRoom: DisconnectRoom,
-  media: MediaController,
+  _media: MediaController,
   disconnectRecoveryMs: number,
   metrics?: RuntimeMetrics,
   logger?: StructuredLogger
@@ -47,6 +47,7 @@ export function createRealtimeRuntime(
           socket.close(code, reason);
         },
       };
+
       const authenticated = createAuthenticatedConnection(connectionId, userId, transport);
       const session = createRealtimeSession(
         authenticated.connection.connectionId,
@@ -56,28 +57,23 @@ export function createRealtimeRuntime(
         registry,
         metrics
       );
+
       logger?.info('realtime_connection_opened', { connectionId, userId });
 
       let finalized = false;
       const finalizeConnection = async () => {
         if (finalized) return;
         finalized = true;
+
         const registered = registry.get(connectionId);
         if (!registered) return;
+
         const { roomId, roomSessionId, participantId, participantSessionId } = registered;
 
         if (roomId && roomSessionId && participantId && participantSessionId) {
           try {
-            await media.closeParticipant({
-              roomId,
-              roomSessionId,
-              participantId,
-              participantSessionId,
-            });
-          } catch (error) {
-            console.error('Failed to close participant media.', error);
-          }
-          try {
+            // Unexpected signaling loss only changes logical connection/session state.
+            // Media resources are reconciled independently and are not destroyed here.
             await disconnectRoom.execute({
               participantId,
               participantSessionId,
@@ -87,7 +83,7 @@ export function createRealtimeRuntime(
             console.error('Failed to persist participant disconnect.', error);
           }
         }
-        clearRoomSessionBinding(registered);
+
         registry.remove(connectionId);
         metrics?.recordConnectionClosed();
         logger?.info('realtime_connection_closed', { connectionId, userId });
@@ -106,6 +102,7 @@ export function createRealtimeRuntime(
           });
         }
       });
+
       socket.on('close', () => void finalizeConnection());
       socket.on('error', () => void finalizeConnection());
     },

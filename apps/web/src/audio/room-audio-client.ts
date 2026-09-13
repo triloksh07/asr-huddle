@@ -27,6 +27,13 @@ type ConsumeResult = {
   rtpParameters: any;
 };
 
+type MediaAudioState = {
+  audioRole: 'SPEAKER' | 'LISTENER';
+  selfMuted: boolean;
+  moderatorMuted: boolean;
+  canTransmitAudio: boolean;
+};
+
 export interface JoinedSession {
   roomId: string;
   roomSessionId: string;
@@ -89,7 +96,6 @@ export class RoomAudioClient {
   async reconnect(ws: WebSocket): Promise<JoinedSession> {
     if (!this.session) throw new Error('There is no recoverable room session.');
 
-    this.closeMediaResources();
     this.attachSocket(ws);
     await this.waitForSocketOpen(ws);
 
@@ -108,6 +114,7 @@ export class RoomAudioClient {
       participantSessionId: result.payload.participantSessionId,
     };
 
+    await this.reconcileMedia();
     return this.session;
   }
 
@@ -115,31 +122,26 @@ export class RoomAudioClient {
     if (!this.session) throw new Error('Join a room first.');
     if (this.producer) return;
 
-    const sendParams = await this.createTransport('send');
-
-    if (!this.device) this.device = new Device();
-    if (!this.device.loaded) {
-      await this.device.load({
-        routerRtpCapabilities: sendParams.rtpCapabilities,
-      });
+    const state = await this.getAudioState();
+    if (!state.canTransmitAudio) {
+      throw new Error('The server does not currently authorize microphone transmission.');
     }
 
-    this.sendTransport = this.configureSendTransport(sendParams);
+    await this.ensureDevice();
+    await this.ensureSendTransport();
 
-    const recvParams = await this.createTransport('recv');
-    this.recvTransport = this.configureRecvTransport(recvParams);
+    if (!this.microphoneTrack) {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: false,
+      });
+      const track = stream.getAudioTracks()[0];
+      if (!track) throw new Error('No microphone audio track was returned.');
+      this.microphoneTrack = track;
+    }
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: false,
-    });
-    const track = stream.getAudioTracks()[0];
-    if (!track) throw new Error('No microphone audio track was returned.');
-
-    this.microphoneTrack = track;
-
-    this.producer = await this.sendTransport.produce({
-      track,
+    this.producer = await this.sendTransport!.produce({
+      track: this.microphoneTrack,
       appData: {
         participantId: this.session.participantId,
         participantSessionId: this.session.participantSessionId,
@@ -147,6 +149,93 @@ export class RoomAudioClient {
     });
 
     await this.consumeCurrentSpeakers();
+  }
+
+  private async reconcileMedia(): Promise<void> {
+    if (!this.session) return;
+
+    const state = await this.getAudioState();
+
+    await this.ensureDevice();
+
+    if (state.canTransmitAudio) {
+      if (!this.producer || this.isTransportUnusable(this.sendTransport)) {
+        this.closeSendMediaOnly();
+        await this.ensureSendTransport();
+
+        if (!this.microphoneTrack) {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: false,
+          });
+          const track = stream.getAudioTracks()[0];
+          if (!track) throw new Error('No microphone audio track was returned.');
+          this.microphoneTrack = track;
+        }
+
+        this.producer = await this.sendTransport!.produce({
+          track: this.microphoneTrack,
+          appData: {
+            participantId: this.session.participantId,
+            participantSessionId: this.session.participantSessionId,
+          },
+        });
+      }
+    } else {
+      if (this.producer) {
+        // The logical mute state is authoritative. Keep the track and transport
+        // available; a rebuilt producer is only created when canTransmitAudio is true.
+        this.producer.close();
+        this.producer = undefined;
+      }
+      if (this.microphoneTrack) this.microphoneTrack.enabled = false;
+    }
+
+    await this.ensureRecvTransport();
+    await this.consumeCurrentSpeakers();
+  }
+
+  private async getAudioState(): Promise<MediaAudioState> {
+    const result = await this.command<MediaAudioState>('media.audio.state', {});
+    if (!result.ok) throw new Error(result.error.message);
+    return result.payload;
+  }
+
+  private async ensureDevice(): Promise<void> {
+    if (!this.device) this.device = new Device();
+
+    if (this.device.loaded) return;
+
+    const params = await this.createTransport('recv');
+    await this.device.load({ routerRtpCapabilities: params.rtpCapabilities });
+    this.recvTransport = this.configureRecvTransport(params);
+  }
+
+  private async ensureSendTransport(): Promise<void> {
+    if (this.sendTransport && !this.isTransportUnusable(this.sendTransport)) return;
+
+    const params = await this.createTransport('send');
+    this.sendTransport = this.configureSendTransport(params);
+  }
+
+  private async ensureRecvTransport(): Promise<void> {
+    if (this.recvTransport && !this.isTransportUnusable(this.recvTransport)) return;
+
+    const params = await this.createTransport('recv');
+    this.recvTransport = this.configureRecvTransport(params);
+  }
+
+  private isTransportUnusable(transport?: types.Transport): boolean {
+    if (!transport) return true;
+    const state = (transport as any).connectionState as string | undefined;
+    return state === 'failed' || state === 'closed' || state === 'disconnected';
+  }
+
+  private closeSendMediaOnly(): void {
+    this.producer?.close();
+    this.sendTransport?.close();
+    this.producer = undefined;
+    this.sendTransport = undefined;
   }
 
   private attachSocket(ws: WebSocket): void {
@@ -310,11 +399,8 @@ export class RoomAudioClient {
 
       this.ws.send(
         JSON.stringify({
-          version: 1,
-          messageId: crypto.randomUUID(),
           requestId,
           type,
-          timestamp: new Date().toISOString(),
           payload,
         })
       );
@@ -328,13 +414,11 @@ export class RoomAudioClient {
     });
   }
 
-  private closeMediaResources(): void {
+  close(): void {
     this.microphoneTrack?.stop();
     this.producer?.close();
 
-    for (const consumer of this.consumers.values()) {
-      consumer.close();
-    }
+    for (const consumer of this.consumers.values()) consumer.close();
 
     this.sendTransport?.close();
     this.recvTransport?.close();
@@ -344,10 +428,7 @@ export class RoomAudioClient {
     this.sendTransport = undefined;
     this.recvTransport = undefined;
     this.consumers.clear();
-  }
 
-  close(): void {
-    this.closeMediaResources();
     this.ws.removeEventListener('message', this.messageHandler);
 
     for (const pending of this.pending.values()) {

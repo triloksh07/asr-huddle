@@ -1,6 +1,7 @@
 import type {
   ConnectTransportCommand,
   ConsumeAudioCommand,
+  MediaAudioState,
   MediaService,
   ProduceAudioCommand,
 } from '@repo/media-contract';
@@ -50,6 +51,23 @@ export class MediaController {
     }
 
     return participant;
+  }
+
+  async getAudioState(context: MediaSessionContext): Promise<MediaAudioState> {
+    const participant = await this.getAuthorizedParticipant(context);
+    if (!participant) {
+      throw new MediaControlError(
+        'MEDIA_UNAUTHORIZED',
+        'Participant is not authorized for media recovery.'
+      );
+    }
+
+    return {
+      audioRole: participant.audioRole,
+      selfMuted: participant.selfMuted,
+      moderatorMuted: participant.moderatorMuted,
+      canTransmitAudio: canTransmitAudio(participant),
+    };
   }
 
   async createTransport(context: MediaSessionContext, payload: unknown) {

@@ -9,12 +9,14 @@ export interface CreateRoomMediaContext {
   roomId: RoomId;
   roomSessionId: RoomSessionId;
 }
+
 export interface JoinMediaContext {
   roomId: RoomId;
   roomSessionId: RoomSessionId;
   participantId: ParticipantId;
   participantSessionId: ParticipantSessionId;
 }
+
 export interface MediaCapabilities {
   codecs: unknown[];
   headerExtensions?: unknown[];
@@ -28,19 +30,26 @@ export interface CreateTransportResult {
   dtlsParameters: unknown;
   rtpCapabilities: MediaCapabilities;
 }
+
 export interface ConnectTransportCommand {
   transportId: MediaTransportId;
   dtlsParameters: unknown;
 }
+
 export interface ProduceAudioCommand {
   transportId: MediaTransportId;
   kind: 'audio';
   rtpParameters: unknown;
-  appData: { participantId: ParticipantId; participantSessionId: ParticipantSessionId };
+  appData: {
+    participantId: ParticipantId;
+    participantSessionId: ParticipantSessionId;
+  };
 }
+
 export interface ProduceAudioResult {
   producerId: MediaProducerId;
 }
+
 export interface ConsumeAudioCommand {
   roomId: RoomId;
   participantId: ParticipantId;
@@ -48,18 +57,28 @@ export interface ConsumeAudioCommand {
   producerId: MediaProducerId;
   rtpCapabilities: MediaCapabilities;
 }
+
 export interface ConsumeAudioResult {
   consumerId: MediaConsumerId;
   producerId: MediaProducerId;
   kind: 'audio';
   rtpParameters: unknown;
 }
+
 export interface MediaProducerInfo {
   producerId: MediaProducerId;
   participantId: ParticipantId;
   participantSessionId: ParticipantSessionId;
   kind: 'audio';
 }
+
+export interface MediaAudioState {
+  audioRole: 'SPEAKER' | 'LISTENER';
+  selfMuted: boolean;
+  moderatorMuted: boolean;
+  canTransmitAudio: boolean;
+}
+
 export interface MediaService {
   createRouter(
     context: CreateRoomMediaContext

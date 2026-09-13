@@ -21,12 +21,21 @@ function requireMediaSession(context: RealtimeCommandContext): MediaSessionConte
   };
 }
 
+export class GetMediaAudioStateCommand implements RealtimeCommandHandler {
+  readonly type = 'media.audio.state';
+  constructor(private readonly media: MediaController) {}
+
+  handle(context: RealtimeCommandContext, envelope: RealtimeEnvelope) {
+    emptySchema.parse(envelope.payload);
+    return this.media.getAudioState(requireMediaSession(context));
+  }
+}
+
 export class CreateMediaTransportCommand implements RealtimeCommandHandler {
   readonly type = 'media.transport.create';
   constructor(private readonly media: MediaController) {}
 
   handle(context: RealtimeCommandContext, envelope: RealtimeEnvelope) {
-    emptySchema.parse(envelope.payload);
     return this.media.createTransport(requireMediaSession(context), envelope.payload);
   }
 }
