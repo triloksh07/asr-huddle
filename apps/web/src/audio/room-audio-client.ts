@@ -1,4 +1,5 @@
 import { Device, types } from 'mediasoup-client';
+import type { MediaAudioState, ReactionType } from '@repo/media-contract';
 
 type Result<T> =
   | { requestId: string; type: string; ok: true; payload: T }
@@ -27,12 +28,6 @@ type ConsumeResult = {
   rtpParameters: any;
 };
 
-type MediaAudioState = {
-  audioRole: 'SPEAKER' | 'LISTENER';
-  selfMuted: boolean;
-  moderatorMuted: boolean;
-  canTransmitAudio: boolean;
-};
 
 export interface JoinedSession {
   roomId: string;
@@ -116,6 +111,16 @@ export class RoomAudioClient {
 
     await this.reconcileMedia();
     return this.session;
+  }
+
+  async setHandRaised(raised: boolean): Promise<void> {
+    const result = await this.command<{ handRaised: boolean }>('speaker.hand', { raised });
+    if (!result.ok) throw new Error(result.error.message);
+  }
+
+  async sendReaction(type: ReactionType): Promise<void> {
+    const result = await this.command<void>('room.reaction', { type });
+    if (!result.ok) throw new Error(result.error.message);
   }
 
   async enableMicrophone(): Promise<void> {

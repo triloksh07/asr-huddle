@@ -22,6 +22,8 @@ import {
   ReconnectRoom,
   SetSelfMute,
   UnmuteParticipant,
+  SetHandRaised,
+  SendReaction,
 } from '@repo/application';
 import {
   PostgresInvitationRepository,
@@ -34,7 +36,7 @@ import {
   PostgresTransaction,
   createDatabase,
 } from '@repo/db';
-import { createRedisClient } from '@repo/redis-models';
+import { createRedisClient, RedisRaisedHandStore } from '@repo/redis-models';
 import { randomUUID } from 'node:crypto';
 import { loadConfig, type ApiConfig } from '../config.js';
 import { MediaController } from '../media/media-controller.js';
@@ -73,6 +75,10 @@ import {
   RequestSpeakerRealtimeCommand,
   RespondInvitationRealtimeCommand,
 } from '../realtime/commands/speaker-workflow.js';
+import {
+  SendReactionRealtimeCommand,
+  SetHandRaisedRealtimeCommand,
+} from '../realtime/commands/room-interactions.js';
 import { RedisRealtimeEventFanout } from '../realtime/event-fanout.js';
 import { RedisRealtimeEventSequence } from '../realtime/event-sequence.js';
 import { createRealtimeRuntime, type RealtimeRuntime } from '../realtime/ws-runtime.js';
@@ -82,19 +88,16 @@ import { RuntimeMetrics } from '../observability/runtime-metrics.js';
 import { StructuredLogger } from '../observability/structured-logger.js';
 import { AuthService } from '../auth/auth-service.js';
 import { JwtService } from '../auth/jwt.js';
-
 class SystemClock {
   now() {
     return new Date();
   }
 }
-
 class UuidGenerator {
   next() {
     return randomUUID();
   }
 }
-
 export interface ApiRuntime {
   readonly config: ApiConfig;
   readonly realtime: RealtimeRuntime;
@@ -107,10 +110,8 @@ export interface ApiRuntime {
   readonly roomControl: RoomControl;
   readonly close: () => Promise<void>;
 }
-
 export async function createApiRuntime(config: ApiConfig = loadConfig()): Promise<ApiRuntime> {
   const database = createDatabase(config.databaseUrl);
-
   const u = new URL(config.redisUrl);
   const redis = createRedisClient({
     host: u.hostname,
@@ -118,7 +119,6 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     password: u.password || undefined,
   });
   await redis.connect();
-
   const users = new PostgresUserRepository(database.db);
   const jwt = new JwtService(config.jwtSecret, config.jwtIssuer, config.jwtTtlSeconds);
   const auth = new AuthService(users, jwt);
@@ -136,18 +136,15 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
   const events = new RedisEventPublisher(redis, metrics, logger);
   const eventSequence = new RedisRealtimeEventSequence(redis);
   const registry = new ConnectionRegistry();
-
+  const raisedHands = new RedisRaisedHandStore(redis);
   const createRoom = new CreateRoom(transaction, ids, clock);
   const endRoom = new EndRoom(transaction, clock, events);
   const roomControl = new RoomControl(rooms, createRoom, endRoom);
-  const snapshot = new GetRoomSnapshot(rooms, roomSessions, participants);
-
+  const snapshot = new GetRoomSnapshot(rooms, roomSessions, participants, raisedHands);
   const delegateHost = new DelegateHost(participants, clock, events);
-
   const join = new JoinRoom(transaction, ids, clock, events);
   const leave = new LeaveRoom(transaction, clock, events, delegateHost);
   const disconnect = new DisconnectRoom(transaction, clock, events, delegateHost);
-
   const requestSpeaker = new RequestSpeaker(
     participants,
     roomSessions,
@@ -162,10 +159,10 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
   const invite = new InviteSpeaker(invitations, participants, ids, clock, events);
   const respondInvite = new RespondInvitation(invitations, participants, clock, events);
   const demote = new DemoteSpeaker(participants, clock, events);
-
+  const setHandRaised = new SetHandRaised(participants, raisedHands, clock, events);
+  const sendReaction = new SendReaction(participants, clock, events);
   const media = new RpcMediaService({ baseUrl: config.mediaBaseUrl });
   const mediaController = new MediaController(media, events, () => clock.now(), participants);
-
   const mute = new MuteParticipant(
     participants,
     roomSessions,
@@ -194,9 +191,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
         ),
     }
   );
-
   const reconnect = new ReconnectRoom(transaction, clock, events);
-
   const lifecycle = new ApiRoomLifecycleRuntime(
     new ProcessRoomLifecycle(
       roomSessions,
@@ -210,20 +205,16 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     mediaController,
     config.roomLifecycleIntervalMs
   );
-
   const router = new CommandRouter();
-
   router.register(new JoinRoomRealtimeCommand(join, snapshot, eventSequence));
   router.register(new LeaveRoomRealtimeCommand(leave));
   router.register(new EndRoomRealtimeCommand(roomControl));
   router.register(new ReconnectRoomRealtimeCommand(reconnect, snapshot, eventSequence));
-
   router.register(new CreateMediaTransportCommand(mediaController));
   router.register(new ConnectMediaTransportCommand(mediaController));
   router.register(new ProduceAudioCommand(mediaController));
   router.register(new ListAudioProducersCommand(mediaController));
   router.register(new ConsumeAudioCommand(mediaController));
-
   router.register(new RequestSpeakerRealtimeCommand(requestSpeaker));
   router.register(new CancelSpeakerRequestRealtimeCommand(cancelRequest));
   router.register(new ApproveSpeakerRequestRealtimeCommand(approve));
@@ -231,24 +222,22 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
   router.register(new InviteSpeakerRealtimeCommand(invite));
   router.register(new RespondInvitationRealtimeCommand(respondInvite));
   router.register(new DemoteSpeakerRealtimeCommand(demote));
-
   router.register(new MuteParticipantRealtimeCommand(mute));
   router.register(new UnmuteParticipantRealtimeCommand(unmute));
   router.register(new SetSelfMuteRealtimeCommand(selfMute));
   router.register(new PromoteCoHostRealtimeCommand(promoteCoHost));
   router.register(new DemoteCoHostRealtimeCommand(demoteCoHost));
   router.register(new RemoveParticipantRealtimeCommand(removeParticipant));
-
+  router.register(new SetHandRaisedRealtimeCommand(setHandRaised));
+  router.register(new SendReactionRealtimeCommand(sendReaction));
   const fanout = new RedisRealtimeEventFanout(redis, registry, (roomId, reason) =>
     lifecycle.terminateRoom(roomId, reason)
   );
   await fanout.start();
-
   const authenticator =
     config.authMode === 'development'
       ? new DevelopmentQueryAuthenticator(users)
       : new JwtRealtimeAuthenticator(users, jwt);
-
   const realtime = createRealtimeRuntime(
     router,
     registry,
@@ -260,7 +249,6 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     logger
   );
   lifecycle.start();
-
   return {
     config,
     realtime,

@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@repo/media-contract": "workspace:*",
     "mediasoup-client": "^3.17.7"
   },
   "devDependencies": {

@@ -142,9 +142,6 @@ importers:
       '@types/node':
         specifier: ^20.14.10
         version: 20.19.43
-      ts-node:
-        specifier: ^10.9.2
-        version: 10.9.2(@types/node@20.19.43)(typescript@5.9.3)
       tsx:
         specifier: ^4.16.2
         version: 4.23.13
@@ -157,6 +154,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@repo/media-contract':
+        specifier: workspace:*
+        version: link:../../packages/media-contract
       mediasoup-client:
         specifier: ^3.17.7
         version: 3.23.1
@@ -302,6 +302,9 @@ importers:
       '@types/ioredis':
         specifier: ^5.0.0
         version: 5.0.0
+      '@types/node':
+        specifier: ^20.14.10
+        version: 20.19.43
       typescript:
         specifier: ^5.5.4
         version: 5.9.3
