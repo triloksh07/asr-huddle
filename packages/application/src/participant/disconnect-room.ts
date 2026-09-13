@@ -5,6 +5,7 @@ import type { HostDelegator } from './types.js';
 export interface DisconnectRoomCommand {
   readonly participantId: string;
   readonly participantSessionId: string;
+  readonly connectionId: string;
   readonly recoverableForMs: number;
 }
 export class DisconnectRoom {
@@ -25,6 +26,14 @@ export class DisconnectRoom {
           'INVALID_STATE',
           'Participant session does not belong to the participant.'
         );
+
+      // A connection may outlive the session it originally owned. In particular,
+      // an old WebSocket can close after a newer connection has successfully
+      // reclaimed the same recoverable participant session. Never let that stale
+      // close mutate the current session.
+      if (session.connectionId !== command.connectionId) return null;
+      if (session.intentionalLeave || session.disconnectedAt !== null) return null;
+
       const now = this.clock.now();
       const recoverableUntil = new Date(now.getTime() + command.recoverableForMs);
       await participants.save(markDisconnected(participant, now));
@@ -39,6 +48,9 @@ export class DisconnectRoom {
         recoverableUntil,
       };
     });
+
+    if (!result) return;
+
     await this.events.publish({
       type: 'participant.disconnected',
       occurredAt: this.clock.now(),

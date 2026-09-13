@@ -41,12 +41,19 @@ export interface ParticipantRepository {
   findById(participantId: string): Promise<ParticipantState | null>;
   findByRoomSession(roomSessionId: string): Promise<readonly ParticipantState[]>;
   findByUserAndRoomSession(userId: string, roomSessionId: string): Promise<ParticipantState | null>;
+  findConnectedByUserId(userId: string): Promise<ParticipantState | null>;
   save(participant: ParticipantState): Promise<void>;
 }
 export interface ParticipantSessionRepository {
   findById(sessionId: string): Promise<ParticipantSessionState | null>;
   findActiveByParticipantId(participantId: string): Promise<ParticipantSessionState | null>;
   findByParticipantId(participantId: string): Promise<readonly ParticipantSessionState[]>;
+  claimReconnect(
+    sessionId: string,
+    expectedConnectionId: string,
+    connectionId: string,
+    connectedAt: Date
+  ): Promise<ParticipantSessionState | null>;
   save(session: ParticipantSessionState): Promise<void>;
 }
 export interface SpeakerRequestRepository {

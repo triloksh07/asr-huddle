@@ -2,11 +2,11 @@ import {
   assertRoomSessionActive,
   canRecoverParticipantSession,
   markReconnected,
-  markSessionReconnected,
   type ConnectionId,
 } from '@repo/domain';
 import { ApplicationError } from '../errors.js';
 import type { ApplicationClock, EventPublisher, Transaction } from '../ports.js';
+
 export interface ReconnectRoomCommand {
   readonly roomId: string;
   readonly participantId: string;
@@ -14,6 +14,7 @@ export interface ReconnectRoomCommand {
   readonly connectionId: ConnectionId;
   readonly userId: string;
 }
+
 export interface ReconnectRoomResult {
   readonly roomId: string;
   readonly roomSessionId: string;
@@ -24,12 +25,14 @@ export interface ReconnectRoomResult {
   readonly selfMuted: boolean;
   readonly moderatorMuted: boolean;
 }
+
 export class ReconnectRoom {
   constructor(
     private readonly transaction: Transaction,
     private readonly clock: ApplicationClock,
     private readonly events: EventPublisher
   ) {}
+
   async execute(command: ReconnectRoomCommand): Promise<ReconnectRoomResult> {
     const result = await this.transaction.run(
       async ({ users, rooms, roomSessions, participants, participantSessions }) => {
@@ -41,6 +44,7 @@ export class ReconnectRoom {
         const roomSession = await roomSessions.findActiveByRoomId(command.roomId);
         if (!roomSession) throw new ApplicationError('ROOM_ENDED', 'The room is not active.');
         assertRoomSessionActive(roomSession);
+
         const participant = await participants.findById(command.participantId);
         if (!participant) throw new ApplicationError('NOT_FOUND', 'Participant was not found.');
         if (
@@ -57,6 +61,7 @@ export class ReconnectRoom {
             'CONFLICT',
             'Participant is not in a recoverable disconnected state.'
           );
+
         const session = await participantSessions.findById(command.participantSessionId);
         if (!session) throw new ApplicationError('NOT_FOUND', 'Participant session was not found.');
         if (session.participantId !== participant.id)
@@ -64,21 +69,37 @@ export class ReconnectRoom {
             'FORBIDDEN',
             'Participant session does not belong to the participant.'
           );
+
         const now = this.clock.now();
         if (!canRecoverParticipantSession(session, now))
           throw new ApplicationError('CONFLICT', 'The participant recovery window has expired.');
+
         const activeSession = await participantSessions.findActiveByParticipantId(participant.id);
         if (activeSession && activeSession.id !== session.id)
           throw new ApplicationError('CONFLICT', 'Participant already has another active session.');
+
+        // Compare-and-claim the recoverable session in the same database transaction.
+        // A concurrent reconnect using the same stale session snapshot will affect
+        // zero rows and therefore cannot also become the active connection.
+        const claimedSession = await participantSessions.claimReconnect(
+          session.id,
+          session.connectionId,
+          command.connectionId,
+          now
+        );
+        if (!claimedSession)
+          throw new ApplicationError(
+            'CONFLICT',
+            'The participant session was already reclaimed by another connection.'
+          );
+
         const updatedParticipant = markReconnected(participant);
-        const updatedSession = markSessionReconnected(session, command.connectionId, now);
         await participants.save(updatedParticipant);
-        await participantSessions.save(updatedSession);
         return {
           roomId: participant.roomId,
           roomSessionId: participant.roomSessionId,
           participantId: participant.id,
-          participantSessionId: session.id,
+          participantSessionId: claimedSession.id,
           userId: participant.userId,
           managementRole: updatedParticipant.managementRole,
           audioRole: updatedParticipant.audioRole,
@@ -87,6 +108,7 @@ export class ReconnectRoom {
         };
       }
     );
+
     await this.events.publish({
       type: 'participant.reconnected',
       occurredAt: this.clock.now(),

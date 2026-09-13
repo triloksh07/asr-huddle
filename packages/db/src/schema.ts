@@ -88,9 +88,7 @@ export const roomSessions = pgTable(
     startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     status: roomSessionStatusEnum('status').notNull().default('ACTIVE'),
-    expiryWarningIssuedAt: timestamp('expiry_warning_issued_at', {
-      withTimezone: true,
-    }),
+    expiryWarningIssuedAt: timestamp('expiry_warning_issued_at', { withTimezone: true }),
     endedAt: timestamp('ended_at', { withTimezone: true }),
   },
   t => ({
@@ -138,6 +136,9 @@ export const participants = pgTable(
       'participants_one_connected_user_per_session_idx'
     )
       .on(t.roomSessionId, t.userId)
+      .where(sql`status = 'CONNECTED'`),
+    participantsOneConnectedUserGlobalIdx: uniqueIndex('participants_one_connected_user_global_idx')
+      .on(t.userId)
       .where(sql`status = 'CONNECTED'`),
     participantsOneActiveHostPerSessionIdx: uniqueIndex(
       'participants_one_active_host_per_session_idx'

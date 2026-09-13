@@ -32,6 +32,34 @@ export class PostgresParticipantSessionRepository implements ParticipantSessionR
     return rows.map(mapParticipantSession);
   }
 
+  async claimReconnect(
+    sessionId: string,
+    expectedConnectionId: string,
+    connectionId: string,
+    connectedAt: Date
+  ) {
+    const rows = await this.database
+      .update(participantSessions)
+      .set({
+        connectionId,
+        status: "ACTIVE",
+        connectedAt,
+        disconnectedAt: null,
+        recoverableUntil: null,
+        intentionalLeave: 0,
+        closedAt: null,
+      })
+      .where(
+        and(
+          eq(participantSessions.id, sessionId),
+          eq(participantSessions.connectionId, expectedConnectionId),
+          eq(participantSessions.status, "DISCONNECTED")
+        )
+      )
+      .returning();
+    return rows[0] ? mapParticipantSession(rows[0]) : null;
+  }
+
   async save(session: ParticipantSessionState): Promise<void> {
     const status =
       session.disconnectedAt === null
