@@ -7,11 +7,9 @@ import {
   type RoomSessionId,
   type UserId,
 } from '../shared.js';
-
 export type ManagementRole = 'HOST' | 'CO_HOST' | 'NONE';
 export type AudioRole = 'SPEAKER' | 'LISTENER';
 export type ParticipantStatus = 'CONNECTED' | 'DISCONNECTED' | 'LEFT' | 'REMOVED';
-
 export type ParticipantState = Readonly<{
   id: ParticipantId;
   roomId: RoomId;
@@ -27,7 +25,6 @@ export type ParticipantState = Readonly<{
   selfMuted: boolean;
   moderatorMuted: boolean;
 }>;
-
 export type ParticipantSessionState = Readonly<{
   id: ParticipantSessionId;
   participantId: ParticipantId;
@@ -37,7 +34,6 @@ export type ParticipantSessionState = Readonly<{
   intentionalLeave: boolean;
   recoverableUntil: Date | null;
 }>;
-
 export function createHostParticipant(input: {
   id: ParticipantId;
   roomId: RoomId;
@@ -45,9 +41,12 @@ export function createHostParticipant(input: {
   userId: UserId;
   joinedAt: Date;
 }): ParticipantState {
-  return { ...createParticipant(input), managementRole: 'HOST', audioRole: 'SPEAKER' };
+  return {
+    ...createParticipant(input),
+    managementRole: 'HOST',
+    audioRole: 'SPEAKER',
+  };
 }
-
 export function createParticipant(input: {
   id: ParticipantId;
   roomId: RoomId;
@@ -71,7 +70,6 @@ export function createParticipant(input: {
     moderatorMuted: false,
   };
 }
-
 export function createParticipantSession(input: {
   id: ParticipantSessionId;
   participantId: ParticipantId;
@@ -79,16 +77,12 @@ export function createParticipantSession(input: {
   connectedAt: Date;
 }): ParticipantSessionState {
   return {
-    id: input.id,
-    participantId: input.participantId,
-    connectionId: input.connectionId,
-    connectedAt: input.connectedAt,
+    ...input,
     disconnectedAt: null,
     intentionalLeave: false,
     recoverableUntil: null,
   };
 }
-
 export function promoteToSpeaker(participant: ParticipantState): ParticipantState {
   ensureConnected(participant);
   return participant.audioRole === 'SPEAKER'
@@ -123,6 +117,9 @@ export function setSelfMuted(participant: ParticipantState, muted: boolean): Par
 export function setModeratorMuted(participant: ParticipantState, muted: boolean): ParticipantState {
   ensureConnected(participant);
   return { ...participant, moderatorMuted: muted };
+}
+export function canRaiseHand(participant: ParticipantState): boolean {
+  return participant.status === 'CONNECTED' && participant.audioRole === 'SPEAKER';
 }
 export function canTransmitAudio(participant: ParticipantState): boolean {
   return (
@@ -186,7 +183,13 @@ export function markSessionReconnected(
 ): ParticipantSessionState {
   if (session.intentionalLeave)
     throw new DomainError('INVALID_STATE', 'An intentionally closed session cannot reconnect.');
-  return { ...session, connectionId, connectedAt, disconnectedAt: null, recoverableUntil: null };
+  return {
+    ...session,
+    connectionId,
+    connectedAt,
+    disconnectedAt: null,
+    recoverableUntil: null,
+  };
 }
 export function markSessionIntentionalLeave(
   session: ParticipantSessionState

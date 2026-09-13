@@ -59,13 +59,16 @@ export interface InvitationRepository {
   findPendingByParticipantId(participantId: string): Promise<InvitationState | null>;
   save(invitation: InvitationState): Promise<void>;
 }
+export interface RaisedHandStore {
+  list(roomSessionId: string): Promise<readonly string[]>;
+  set(roomSessionId: string, participantId: string, raised: boolean): Promise<void>;
+}
 export interface IdGenerator {
   next(): string;
 }
 export interface ApplicationClock {
   now(): Date;
 }
-
 export interface TransactionScope {
   readonly users: UserRepository;
   readonly rooms: RoomRepository;
@@ -75,11 +78,9 @@ export interface TransactionScope {
   readonly speakerRequests: SpeakerRequestRepository;
   readonly invitations: InvitationRepository;
 }
-
 export interface Transaction {
   run<T>(work: (scope: TransactionScope) => Promise<T>): Promise<T>;
 }
-
 export interface DomainEvent {
   readonly type: string;
   readonly occurredAt: Date;
@@ -93,13 +94,13 @@ export interface DomainEvent {
 export interface EventPublisher {
   publish(event: DomainEvent): Promise<void>;
 }
-
 export interface ParticipantSnapshot {
   readonly id: string;
   readonly userId: string;
   readonly managementRole: ManagementRole;
   readonly audioRole: AudioRole;
   readonly status: ParticipantState['status'];
+  readonly handRaised: boolean;
 }
 export interface RoomSnapshot {
   readonly room: RoomState;

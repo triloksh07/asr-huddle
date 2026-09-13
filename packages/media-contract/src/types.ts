@@ -94,3 +94,22 @@ export interface MediaService {
   closeParticipantMedia(context: JoinMediaContext): Promise<void>;
   closeRoomMedia(context: CreateRoomMediaContext): Promise<void>;
 }
+
+export interface ActiveSpeaker {
+  participantId: ParticipantId;
+  participantSessionId: ParticipantSessionId;
+  producerId: MediaProducerId;
+}
+
+export interface ActiveSpeakersState {
+  speakers: readonly ActiveSpeaker[];
+}
+
+export interface DominantSpeakerState {
+  participantId: ParticipantId | null;
+  participantSessionId: ParticipantSessionId | null;
+  producerId: MediaProducerId | null;
+}
+
+export { REACTION_TYPES } from '@repo/domain';
+export type { ReactionType } from '@repo/domain';
