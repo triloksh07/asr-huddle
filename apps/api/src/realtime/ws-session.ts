@@ -1,12 +1,12 @@
 import type { ConnectionId, UserId } from '@repo/domain';
 import { CommandRouter } from './command-router.js';
 import { ConnectionRegistry } from './connection-registry.js';
-import type { RealtimeConnection, RealtimeTransport } from './types.js';
+import type { RealtimeConnection, RealtimeResponse, RealtimeTransport } from './types.js';
 import type { RuntimeMetrics } from '../observability/runtime-metrics.js';
 
 export interface RealtimeSession {
   readonly connection: RealtimeConnection;
-  receive(raw: unknown): Promise<void>;
+  receive(raw: unknown): Promise<RealtimeResponse>;
   close(code: number, reason: string): Promise<void>;
 }
 
@@ -34,10 +34,11 @@ export function createRealtimeSession(
   return {
     connection,
 
-    async receive(raw: unknown): Promise<void> {
+    async receive(raw: unknown): Promise<RealtimeResponse> {
       const response = await router.dispatch({ connection, transport }, raw);
       metrics?.recordCommand(response.ok);
       await transport.send(response);
+      return response;
     },
 
     async close(code: number, reason: string): Promise<void> {

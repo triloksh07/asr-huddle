@@ -38,6 +38,8 @@ export interface ApiConfig {
   readonly jwtSecret: string;
   readonly jwtIssuer: string;
   readonly jwtTtlSeconds: number;
+  readonly realtimeMaxMessageBytes: number;
+  readonly realtimeMaxProtocolViolations: number;
 }
 
 export function loadConfig(): ApiConfig {
@@ -66,5 +68,15 @@ export function loadConfig(): ApiConfig {
     jwtSecret: requiredSecret('JWT_SECRET'),
     jwtIssuer: process.env.JWT_ISSUER ?? 'asr-huddle-api',
     jwtTtlSeconds: positiveInteger(process.env.JWT_TTL_SECONDS, 3600, 'JWT_TTL_SECONDS'),
+    realtimeMaxMessageBytes: positiveInteger(
+      process.env.REALTIME_MAX_MESSAGE_BYTES,
+      65_536,
+      'REALTIME_MAX_MESSAGE_BYTES'
+    ),
+    realtimeMaxProtocolViolations: positiveInteger(
+      process.env.REALTIME_MAX_PROTOCOL_VIOLATIONS,
+      5,
+      'REALTIME_MAX_PROTOCOL_VIOLATIONS'
+    ),
   };
 }

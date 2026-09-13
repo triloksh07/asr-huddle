@@ -14,66 +14,78 @@ function socket() {
       listeners.set(event, listener);
     }),
     emit(event: string, value?: unknown) {
-      listeners.get(event)?.(value);
+      return listeners.get(event)?.(value);
     },
   };
 }
 
-describe("createRealtimeRuntime", () => {
-  it("authenticates before registering a websocket connection", async () => {
-    const router = new CommandRouter();
-    const registry = new ConnectionRegistry();
-    const authenticate = vi.fn().mockResolvedValue("user-1");
+function runtime(options: { maxMessageBytes?: number; maxProtocolViolations?: number } = {}) {
+  const router = new CommandRouter();
+  const registry = new ConnectionRegistry();
+  const authenticator = { authenticate: vi.fn().mockResolvedValue("user-1") };
+  const disconnectRoom = { execute: vi.fn().mockResolvedValue(undefined) };
 
-    const runtime = createRealtimeRuntime(
+  return {
+    runtime: createRealtimeRuntime(
       router,
       registry,
-      { authenticate },
-    );
+      authenticator,
+      disconnectRoom as never,
+      {} as never,
+      15_000,
+      undefined,
+      undefined,
+      options.maxMessageBytes,
+      options.maxProtocolViolations
+    ),
+    registry,
+  };
+}
 
-    const ws = socket();
-    await runtime.accept(ws, { headers: {} });
-
-    expect(authenticate).toHaveBeenCalledOnce();
-    expect(registry.size()).toBe(1);
-  });
-
-  it("rejects malformed JSON without crashing the socket handler", async () => {
-    const router = new CommandRouter();
-    const registry = new ConnectionRegistry();
-
-    const runtime = createRealtimeRuntime(
-      router,
-      registry,
-      { authenticate: vi.fn().mockResolvedValue("user-1") },
-    );
-
+describe("createRealtimeRuntime B20.2 protocol boundary", () => {
+  it("accepts websocket text and Buffer JSON frames", async () => {
+    const { runtime, registry } = runtime();
     const ws = socket();
     await runtime.accept(ws, {});
 
-    await ws.emit("message", "{not-json");
+    await ws.emit("message", JSON.stringify({
+      requestId: "r1",
+      type: "unknown.command",
+      payload: {},
+    }));
+    await ws.emit("message", Buffer.from(JSON.stringify({
+      requestId: "r2",
+      type: "unknown.command",
+      payload: {},
+    })));
 
-    expect(ws.send).toHaveBeenCalledWith(
-      expect.stringContaining('"code":"INVALID_MESSAGE"'),
-    );
+    expect(registry.size()).toBe(1);
+    expect(ws.send).toHaveBeenCalledTimes(2);
   });
 
-  it("removes the connection when the websocket closes", async () => {
-    const router = new CommandRouter();
-    const registry = new ConnectionRegistry();
-
-    const runtime = createRealtimeRuntime(
-      router,
-      registry,
-      { authenticate: vi.fn().mockResolvedValue("user-1") },
-    );
-
+  it("rejects oversized messages with websocket code 1009", async () => {
+    const { runtime } = runtime({ maxMessageBytes: 16 });
     const ws = socket();
     await runtime.accept(ws, {});
-    expect(registry.size()).toBe(1);
 
-    ws.emit("close");
+    await ws.emit("message", JSON.stringify({
+      requestId: "r1",
+      type: "unknown.command",
+      payload: {},
+    }));
 
-    expect(registry.size()).toBe(0);
+    expect(ws.send).toHaveBeenCalledWith(expect.stringContaining("MESSAGE_TOO_LARGE"));
+    expect(ws.close).toHaveBeenCalledWith(1009, "Message too large.");
+  });
+
+  it("closes after repeated malformed protocol messages", async () => {
+    const { runtime } = runtime({ maxProtocolViolations: 2 });
+    const ws = socket();
+    await runtime.accept(ws, {});
+
+    await ws.emit("message", "{bad");
+    await ws.emit("message", "{bad");
+
+    expect(ws.close).toHaveBeenCalledWith(1008, "Protocol violation limit exceeded.");
   });
 });

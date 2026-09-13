@@ -246,7 +246,9 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     mediaController,
     config.participantDisconnectRecoveryMs,
     metrics,
-    logger
+    logger,
+    config.realtimeMaxMessageBytes,
+    config.realtimeMaxProtocolViolations
   );
   lifecycle.start();
   return {
