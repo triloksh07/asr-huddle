@@ -8,18 +8,18 @@
     "build": "tsc",
     "build:client": "esbuild public/client.js --bundle --outfile=public/dist/bundle.js --format=esm --sourcemap",
     "start": "node dist/index.js",
-    "check-types": "tsc --noEmit",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest"
   },
   "dependencies": {
     "@repo/application": "workspace:*",
     "@repo/audio-config": "workspace:*",
     "@repo/db": "workspace:*",
     "@repo/domain": "workspace:*",
+    "@repo/media-contract": "workspace:*",
     "@repo/protocol": "workspace:*",
     "@repo/redis-models": "workspace:*",
     "@repo/sfu-contract": "workspace:*",
-    "@repo/media-contract": "workspace:*",
     "@repo/state-machine": "workspace:*",
     "dotenv": "^16.6.1",
     "express": "^4.19.2",
@@ -31,11 +31,12 @@
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
     "@types/express": "^4.17.21",
-    "@types/node": "^20.14.10",
+    "@types/node": "^20.19.43",
     "@types/ws": "^8.5.10",
     "esbuild": "^0.21.5",
     "ts-node": "^10.9.2",
     "tsx": "^4.16.2",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "vitest": "^5.0.0"
   }
 }

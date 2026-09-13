@@ -28,6 +28,7 @@ describe("media realtime commands", () => {
         participantSessionId: "session-1" as never,
         roomId: "room-1" as never,
         connectedAt: new Date().toISOString(),
+        roomSessionId: null
       },
       transport: {
         send: vi.fn(),

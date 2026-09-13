@@ -2,6 +2,7 @@ import http from 'node:http';
 import express from 'express';
 import { WebSocketServer } from 'ws';
 import type { ApiRuntime } from './composition-root.js';
+import { serializeAuthCookie } from '../auth/auth-cookie.js';
 
 export interface RunningServer {
   readonly server: http.Server;
@@ -42,7 +43,18 @@ export async function startServer(runtime: ApiRuntime): Promise<RunningServer> {
       return;
     }
     try {
-      response.status(201).json(await runtime.auth.register(body.name, body.email, body.password));
+      const result = await runtime.auth.register(body.name, body.email, body.password);
+      response
+        .status(201)
+        .setHeader(
+          'Set-Cookie',
+          serializeAuthCookie(
+            result.accessToken,
+            runtime.config.jwtTtlSeconds,
+            runtime.config.authMode === 'production'
+          )
+        )
+        .json(result);
     } catch (error) {
       response
         .status(409)
@@ -57,7 +69,18 @@ export async function startServer(runtime: ApiRuntime): Promise<RunningServer> {
       return;
     }
     try {
-      response.status(200).json(await runtime.auth.login(body.email, body.password));
+      const result = await runtime.auth.login(body.email, body.password);
+      response
+        .status(200)
+        .setHeader(
+          'Set-Cookie',
+          serializeAuthCookie(
+            result.accessToken,
+            runtime.config.jwtTtlSeconds,
+            runtime.config.authMode === 'production'
+          )
+        )
+        .json(result);
     } catch {
       response.status(401).json({ error: 'Invalid email or password.' });
     }

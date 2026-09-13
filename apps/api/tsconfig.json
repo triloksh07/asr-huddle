@@ -2,7 +2,8 @@
   "extends": "@repo/tsconfig/node.json",
   "compilerOptions": {
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    "moduleResolution": "node16"
   },
   "include": ["src/**/*"]
 }

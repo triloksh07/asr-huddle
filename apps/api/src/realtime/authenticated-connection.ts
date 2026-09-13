@@ -3,6 +3,7 @@ import type { ConnectionId, UserId } from '@repo/domain';
 import type { UserRepository } from '@repo/application';
 import type { RealtimeConnection, RealtimeTransport } from './types.js';
 import { JwtService } from '../auth/jwt.js';
+import { readAuthCookie } from '../auth/auth-cookie.js';
 
 export interface AuthenticatedRealtimeConnection {
   connection: RealtimeConnection;
@@ -49,14 +50,24 @@ export class JwtRealtimeAuthenticator implements RealtimeAuthenticator {
     private readonly users: UserRepository,
     private readonly jwt: JwtService
   ) {}
+
   async authenticate(request: unknown): Promise<UserId> {
     const incoming = request as IncomingMessage;
     const url = new URL(incoming.url ?? '/', 'ws://localhost');
-    const token = url.searchParams.get('access_token');
-    if (!token) throw new Error('WebSocket authentication requires access_token.');
+    const token = readAuthCookie(incoming) ?? url.searchParams.get('access_token');
+
+    if (!token) {
+      throw new Error('WebSocket authentication requires an access token.');
+    }
+
     const userId = this.jwt.verify(token);
-    if (!(await this.users.findById(userId))) throw new Error('Authenticated user was not found.');
-    return userId as UserId;
+    const user = await this.users.findById(userId);
+
+    if (!user) {
+      throw new Error('Authenticated user was not found.');
+    }
+
+    return user.id as UserId;
   }
 }
 
