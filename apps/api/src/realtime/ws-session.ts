@@ -25,7 +25,7 @@ export function createRealtimeSession(
     participantSessionId: null,
     roomId: null,
     connectedAt: new Date().toISOString(),
-    roomSessionId: null
+    roomSessionId: null,
   };
 
   registry.add(Object.assign(connection, { transport }));

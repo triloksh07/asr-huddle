@@ -131,7 +131,10 @@ export function createRealtimeRuntime(
       socket.on('message', async data => {
         const message = decodeMessage(data);
         if (message === null) {
-          await closeForProtocolViolation('INVALID_MESSAGE', 'Message must be valid text or binary JSON.');
+          await closeForProtocolViolation(
+            'INVALID_MESSAGE',
+            'Message must be valid text or binary JSON.'
+          );
           return;
         }
 

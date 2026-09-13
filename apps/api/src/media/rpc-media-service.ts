@@ -66,6 +66,10 @@ export class RpcMediaService implements MediaService {
     return this.call(mediaRpcMethods.listAudioProducers, context);
   }
 
+  revokeAudioProduction(context: JoinMediaContext): Promise<void> {
+    return this.call(mediaRpcMethods.revokeAudioProduction, context);
+  }
+
   closeParticipantMedia(context: JoinMediaContext): Promise<void> {
     return this.call(mediaRpcMethods.closeParticipant, context);
   }

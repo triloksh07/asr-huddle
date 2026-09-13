@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { JoinMediaContext, MediaService, MediaTransportDirection } from '@repo/media-contract';
+import type {
+  JoinMediaContext,
+  MediaService,
+  MediaTransportDirection,
+  ConnectTransportCommand,
+} from '@repo/media-contract';
 import {
   mediaRpcMethods,
   type MediaRpcMethod,
@@ -87,6 +92,7 @@ export class MediaRpcServer {
     switch (method) {
       case mediaRpcMethods.createRouter:
         return this.media.createRouter(params as never);
+
       case mediaRpcMethods.createTransport: {
         const { direction = 'send', ...context } = params as {
           direction?: MediaTransportDirection;
@@ -94,18 +100,27 @@ export class MediaRpcServer {
 
         return this.media.createWebRtcTransport(context as JoinMediaContext, direction);
       }
+
       case mediaRpcMethods.connectTransport:
-        return this.media.connectWebRtcTransport(params as never);
+        return this.media.connectWebRtcTransport(params as ConnectTransportCommand);
+
       case mediaRpcMethods.produceAudio:
         return this.media.produceAudio(params as never);
+
       case mediaRpcMethods.consumeAudio:
         return this.media.consumeAudio(params as never);
+
       case mediaRpcMethods.listAudioProducers:
         return this.media.listAudioProducers(params as never);
+
       case mediaRpcMethods.closeParticipant:
         return this.media.closeParticipantMedia(params as never);
+
       case mediaRpcMethods.closeRoom:
         return this.media.closeRoomMedia(params as never);
+
+      default:
+        return Promise.reject(new Error(`Unsupported media RPC method: ${method}`));
     }
   }
 

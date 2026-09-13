@@ -119,6 +119,7 @@ export class MediasoupMediaService implements MediaService {
         participantId: context.participantId,
         participantSessionId: context.participantSessionId,
         direction,
+        connectionId: context.connectionId,
       },
     });
     participant.transports.set(transport.id, { transport, direction });
@@ -145,6 +146,17 @@ export class MediasoupMediaService implements MediaService {
         'TRANSPORT_CLOSED',
         `Transport ${command.transportId} is already closed.`
       );
+
+    if (
+      transport.appData.participantId !== command.participantId ||
+      transport.appData.participantSessionId !== command.participantSessionId ||
+      transport.appData.connectionId !== command.connectionId
+    )
+      throw new MediaPlaneError(
+        'MEDIA_IDENTITY_MISMATCH',
+        'Transport ownership does not match the current media session.'
+      );
+
     await transport.connect({ dtlsParameters: command.dtlsParameters as never });
   }
   async produceAudio(command: ProduceAudioCommand): Promise<ProduceAudioResult> {
@@ -165,7 +177,8 @@ export class MediasoupMediaService implements MediaService {
       );
     if (
       command.appData.participantId !== transport.appData.participantId ||
-      command.appData.participantSessionId !== transport.appData.participantSessionId
+      command.appData.participantSessionId !== transport.appData.participantSessionId ||
+      command.appData.connectionId !== transport.appData.connectionId
     )
       throw new MediaPlaneError(
         'MEDIA_IDENTITY_MISMATCH',
@@ -218,7 +231,9 @@ export class MediasoupMediaService implements MediaService {
       );
     if (
       entry.transport.appData.participantId !== command.participantId ||
-      entry.transport.appData.participantSessionId !== command.participantSessionId
+      entry.transport.appData.participantSessionId !== command.participantSessionId ||
+      entry.transport.appData.participantSessionId !== command.participantSessionId ||
+      entry.transport.appData.connectionId !== command.connectionId
     )
       throw new MediaPlaneError(
         'MEDIA_IDENTITY_MISMATCH',
@@ -231,6 +246,7 @@ export class MediasoupMediaService implements MediaService {
       appData: {
         participantId: command.participantId,
         participantSessionId: command.participantSessionId,
+        connectionId: command.connectionId,
       },
     });
     participant.consumers.set(consumer.id, consumer);
@@ -242,6 +258,23 @@ export class MediasoupMediaService implements MediaService {
       rtpParameters: consumer.rtpParameters,
     };
   }
+
+  async revokeAudioProduction(context: JoinMediaContext): Promise<void> {
+    const room = this.rooms.get(context.roomId);
+    if (!room) return;
+    const participant = room.participants.get(context.participantId);
+    if (!participant) return;
+    for (const producer of participant.producers.values()) {
+      if (
+        producer.appData.participantId === context.participantId &&
+        producer.appData.participantSessionId === context.participantSessionId &&
+        producer.appData.connectionId === context.connectionId
+      ) {
+        producer.close();
+      }
+    }
+  }
+
   async listAudioProducers(context: JoinMediaContext): Promise<MediaProducerInfo[]> {
     const room = this.requireRoom(context.roomId);
     const result: MediaProducerInfo[] = [];

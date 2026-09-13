@@ -158,11 +158,17 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
   const deny = new DenySpeakerRequest(requests, participants, clock, events);
   const invite = new InviteSpeaker(invitations, participants, ids, clock, events);
   const respondInvite = new RespondInvitation(invitations, participants, clock, events);
-  const demote = new DemoteSpeaker(participants, clock, events);
+
   const setHandRaised = new SetHandRaised(participants, raisedHands, clock, events);
   const sendReaction = new SendReaction(participants, clock, events);
   const media = new RpcMediaService({ baseUrl: config.mediaBaseUrl });
-  const mediaController = new MediaController(media, events, () => clock.now(), participants);
+  const mediaController = new MediaController(
+    media,
+    events,
+    () => clock.now(),
+    participants,
+    participantSessions
+  );
   const mute = new MuteParticipant(
     participants,
     roomSessions,
@@ -172,7 +178,22 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     mediaController
   );
   const unmute = new UnmuteParticipant(participants, roomSessions, clock, events);
-  const selfMute = new SetSelfMute(participants, clock, events);
+  const selfMute = new SetSelfMute(
+    participants,
+    clock,
+    events,
+    participantSessions,
+    mediaController
+  );
+  
+  const demote = new DemoteSpeaker(
+    participants,
+    clock,
+    events,
+    participantSessions,
+    mediaController
+  );
+
   const promoteCoHost = new PromoteCoHost(participants, roomSessions, clock, events);
   const demoteCoHost = new DemoteCoHost(participants, clock, events);
   const removeParticipant = new RemoveParticipant(

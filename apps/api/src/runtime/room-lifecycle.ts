@@ -72,6 +72,7 @@ export class ApiRoomLifecycleRuntime implements RoomLifecycleRuntime {
               roomSessionId: connection.roomSessionId,
               participantId: connection.participantId,
               participantSessionId: connection.participantSessionId,
+              connectionId: connection.connectionId,
             });
           } catch (error) {
             console.error('Failed to close media for ended room participant.', error);

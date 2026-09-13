@@ -39,6 +39,10 @@ export class UnconfiguredMediaService implements MediaService {
     throw new Error('Media service is not configured.');
   }
 
+  async revokeAudioProduction(_: JoinMediaContext): Promise<void> {
+    throw new Error('Media service is not configured.');
+  }
+
   async closeParticipantMedia(_: JoinMediaContext): Promise<void> {
     throw new Error('Media service is not configured.');
   }

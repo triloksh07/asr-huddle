@@ -5,7 +5,13 @@ import type {
   MediaService,
   ProduceAudioCommand,
 } from '@repo/media-contract';
-import type { ParticipantId, ParticipantSessionId, RoomId, RoomSessionId } from '@repo/domain';
+import type {
+  ParticipantId,
+  ParticipantSessionId,
+  RoomId,
+  RoomSessionId,
+  ConnectionId,
+} from '@repo/domain';
 import {
   connectTransportSchema,
   consumeAudioSchema,
@@ -13,7 +19,12 @@ import {
   produceAudioSchema,
 } from '@repo/media-contract';
 import { canTransmitAudio, type ParticipantState } from '@repo/domain';
-import type { DomainEvent, EventPublisher, ParticipantRepository } from '@repo/application';
+import type {
+  DomainEvent,
+  EventPublisher,
+  ParticipantRepository,
+  ParticipantSessionRepository,
+} from '@repo/application';
 import { MediaControlError } from './media-errors.js';
 
 export interface MediaSessionContext {
@@ -21,6 +32,7 @@ export interface MediaSessionContext {
   roomSessionId: RoomSessionId;
   participantId: ParticipantId;
   participantSessionId: ParticipantSessionId;
+  connectionId: ConnectionId;
 }
 
 export class MediaController {
@@ -28,25 +40,41 @@ export class MediaController {
     private readonly media: MediaService,
     private readonly events?: EventPublisher,
     private readonly now: () => Date = () => new Date(),
-    private readonly participants?: ParticipantRepository
+    private readonly participants?: ParticipantRepository,
+    private readonly participantSessions?: ParticipantSessionRepository
   ) {}
 
-  private async getAuthorizedParticipant(
-    context: MediaSessionContext
-  ): Promise<ParticipantState | null> {
-    const participant = this.participants
-      ? await this.participants.findById(context.participantId)
-      : null;
+  private async getAuthorizedParticipant(context: MediaSessionContext): Promise<ParticipantState> {
+    if (!this.participants || !this.participantSessions) {
+      throw new MediaControlError(
+        'MEDIA_UNAUTHORIZED',
+        'Media authorization dependencies are not configured.'
+      );
+    }
 
+    const participant = await this.participants.findById(context.participantId);
     if (
-      this.participants &&
-      (!participant ||
-        participant.roomSessionId !== context.roomSessionId ||
-        participant.status !== 'CONNECTED')
+      !participant ||
+      participant.roomSessionId !== context.roomSessionId ||
+      participant.status !== 'CONNECTED'
     ) {
       throw new MediaControlError(
         'MEDIA_UNAUTHORIZED',
         'Participant is not authorized for this media session.'
+      );
+    }
+
+    const session = await this.participantSessions.findById(context.participantSessionId);
+    if (
+      !session ||
+      session.participantId !== participant.id ||
+      session.connectionId !== context.connectionId ||
+      session.disconnectedAt !== null ||
+      session.intentionalLeave
+    ) {
+      throw new MediaControlError(
+        'MEDIA_SESSION_INVALID',
+        'Media session does not belong to the current realtime connection.'
       );
     }
 
@@ -55,13 +83,6 @@ export class MediaController {
 
   async getAudioState(context: MediaSessionContext): Promise<MediaAudioState> {
     const participant = await this.getAuthorizedParticipant(context);
-    if (!participant) {
-      throw new MediaControlError(
-        'MEDIA_UNAUTHORIZED',
-        'Participant is not authorized for media recovery.'
-      );
-    }
-
     return {
       audioRole: participant.audioRole,
       selfMuted: participant.selfMuted,
@@ -78,13 +99,11 @@ export class MediaController {
 
     const participant = await this.getAuthorizedParticipant(context);
 
-    if (parsed.data.direction === 'send') {
-      if (!participant || !canTransmitAudio(participant)) {
-        throw new MediaControlError(
-          'MEDIA_UNAUTHORIZED',
-          'Participant is not currently authorized to transmit audio.'
-        );
-      }
+    if (parsed.data.direction === 'send' && !canTransmitAudio(participant)) {
+      throw new MediaControlError(
+        'MEDIA_UNAUTHORIZED',
+        'Participant is not currently authorized to transmit audio.'
+      );
     }
 
     const router = await this.media.createRouter({
@@ -106,13 +125,28 @@ export class MediaController {
     }
 
     await this.getAuthorizedParticipant(context);
-    await this.media.connectWebRtcTransport(parsed.data as ConnectTransportCommand);
+    const command: ConnectTransportCommand = {
+      transportId: parsed.data.transportId as ConnectTransportCommand['transportId'],
+      participantId: context.participantId,
+      participantSessionId: context.participantSessionId,
+      connectionId: context.connectionId,
+      dtlsParameters: parsed.data.dtlsParameters,
+    };
+    await this.media.connectWebRtcTransport(command);
   }
 
   async produceAudio(context: MediaSessionContext, payload: unknown) {
     const parsed = produceAudioSchema.safeParse(payload);
     if (!parsed.success) {
       throw new MediaControlError('INVALID_MEDIA_COMMAND', 'Invalid audio producer payload.');
+    }
+
+    const participant = await this.getAuthorizedParticipant(context);
+    if (!canTransmitAudio(participant)) {
+      throw new MediaControlError(
+        'MEDIA_UNAUTHORIZED',
+        'Participant is not currently authorized to produce audio.'
+      );
     }
 
     if (
@@ -125,15 +159,17 @@ export class MediaController {
       );
     }
 
-    const participant = await this.getAuthorizedParticipant(context);
-    if (!participant || !canTransmitAudio(participant)) {
-      throw new MediaControlError(
-        'MEDIA_UNAUTHORIZED',
-        'Participant is not currently authorized to produce audio.'
-      );
-    }
-
-    const result = await this.media.produceAudio(parsed.data as ProduceAudioCommand);
+    const command: ProduceAudioCommand = {
+      transportId: parsed.data.transportId as ProduceAudioCommand['transportId'],
+      kind: parsed.data.kind,
+      rtpParameters: parsed.data.rtpParameters,
+      appData: {
+        participantId: context.participantId,
+        participantSessionId: context.participantSessionId,
+        connectionId: context.connectionId,
+      },
+    };
+    const result = await this.media.produceAudio(command);
 
     if (this.events) {
       await this.events.publish({
@@ -143,17 +179,15 @@ export class MediaController {
         roomSessionId: context.roomSessionId,
         participantId: context.participantId,
         participantSessionId: context.participantSessionId,
-        payload: {
-          producerId: result.producerId,
-          kind: 'audio',
-        },
+        payload: { producerId: result.producerId, kind: 'audio' },
       } as DomainEvent);
     }
 
     return result;
   }
 
-  listAudioProducers(context: MediaSessionContext) {
+  async listAudioProducers(context: MediaSessionContext) {
+    await this.getAuthorizedParticipant(context);
     return this.media.listAudioProducers(context);
   }
 
@@ -162,6 +196,8 @@ export class MediaController {
     if (!parsed.success) {
       throw new MediaControlError('INVALID_MEDIA_COMMAND', 'Invalid audio consumer payload.');
     }
+
+    await this.getAuthorizedParticipant(context);
 
     if (
       parsed.data.participantId !== context.participantId ||
@@ -174,8 +210,20 @@ export class MediaController {
       );
     }
 
+    const command: ConsumeAudioCommand = {
+      roomId: context.roomId,
+      participantId: context.participantId,
+      participantSessionId: context.participantSessionId,
+      connectionId: context.connectionId,
+      producerId: parsed.data.producerId as ConsumeAudioCommand['producerId'],
+      rtpCapabilities: parsed.data.rtpCapabilities,
+    };
+    return this.media.consumeAudio(command);
+  }
+
+  async revokeAudioProduction(context: MediaSessionContext): Promise<void> {
     await this.getAuthorizedParticipant(context);
-    return this.media.consumeAudio(parsed.data as ConsumeAudioCommand);
+    await this.media.revokeAudioProduction(context);
   }
 
   closeParticipant(context: MediaSessionContext) {
