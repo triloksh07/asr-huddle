@@ -1,4 +1,10 @@
-import type { ParticipantId, ParticipantSessionId, RoomId, RoomSessionId } from '@repo/domain';
+import type {
+  ParticipantId,
+  ParticipantSessionId,
+  RoomId,
+  RoomSessionId,
+  ConnectionId,
+} from '@repo/domain';
 
 export type MediaTransportId = string & { readonly __mediaTransportId: unique symbol };
 export type MediaProducerId = string & { readonly __mediaProducerId: unique symbol };
@@ -11,6 +17,14 @@ export interface CreateRoomMediaContext {
 }
 
 export interface JoinMediaContext {
+  roomId: RoomId;
+  roomSessionId: RoomSessionId;
+  participantId: ParticipantId;
+  participantSessionId: ParticipantSessionId;
+  connectionId: ConnectionId;
+}
+
+export interface CloseParticipantMediaContext {
   roomId: RoomId;
   roomSessionId: RoomSessionId;
   participantId: ParticipantId;
@@ -33,6 +47,9 @@ export interface CreateTransportResult {
 
 export interface ConnectTransportCommand {
   transportId: MediaTransportId;
+  participantId: ParticipantId;
+  participantSessionId: ParticipantSessionId;
+  connectionId: ConnectionId;
   dtlsParameters: unknown;
 }
 
@@ -43,6 +60,7 @@ export interface ProduceAudioCommand {
   appData: {
     participantId: ParticipantId;
     participantSessionId: ParticipantSessionId;
+    connectionId: ConnectionId;
   };
 }
 
@@ -54,6 +72,7 @@ export interface ConsumeAudioCommand {
   roomId: RoomId;
   participantId: ParticipantId;
   participantSessionId: ParticipantSessionId;
+  connectionId: ConnectionId;
   producerId: MediaProducerId;
   rtpCapabilities: MediaCapabilities;
 }
@@ -91,7 +110,8 @@ export interface MediaService {
   produceAudio(command: ProduceAudioCommand): Promise<ProduceAudioResult>;
   consumeAudio(command: ConsumeAudioCommand): Promise<ConsumeAudioResult>;
   listAudioProducers(context: JoinMediaContext): Promise<MediaProducerInfo[]>;
-  closeParticipantMedia(context: JoinMediaContext): Promise<void>;
+  revokeAudioProduction(context: JoinMediaContext): Promise<void>;
+  closeParticipantMedia(context: CloseParticipantMediaContext): Promise<void>;
   closeRoomMedia(context: CreateRoomMediaContext): Promise<void>;
 }
 

@@ -30,84 +30,84 @@ export class JoinRoom {
   ) {}
   async execute(command: JoinRoomCommand): Promise<JoinRoomResult> {
     const result = await this.transaction.run(
-        async ({ users, rooms, roomSessions, participants, participantSessions }) => {
-          const user = await users.findById(command.userId);
-          if (!user)
-            throw new ApplicationError('UNAUTHENTICATED', 'Authenticated user was not found.');
-          const room = await rooms.findById(command.roomId);
-          if (!room) throw new ApplicationError('NOT_FOUND', 'Room was not found.');
-          const session = await roomSessions.findActiveByRoomId(command.roomId);
-          if (!session) throw new ApplicationError('ROOM_ENDED', 'The room is not active.');
-          assertRoomSessionActive(session);
+      async ({ users, rooms, roomSessions, participants, participantSessions }) => {
+        const user = await users.findById(command.userId);
+        if (!user)
+          throw new ApplicationError('UNAUTHENTICATED', 'Authenticated user was not found.');
+        const room = await rooms.findById(command.roomId);
+        if (!room) throw new ApplicationError('NOT_FOUND', 'Room was not found.');
+        const session = await roomSessions.findActiveByRoomId(command.roomId);
+        if (!session) throw new ApplicationError('ROOM_ENDED', 'The room is not active.');
+        assertRoomSessionActive(session);
 
-          const existing = await participants.findByRoomSession(session.id);
-          const existingUser = existing.find(p => p.userId === user.id);
-          if (existingUser?.status === 'CONNECTED') {
-            const active = await participantSessions.findActiveByParticipantId(existingUser.id);
-            if (active)
-              throw new ApplicationError(
-                'CONFLICT',
-                'This user already has an active session in the room.'
-              );
-          }
-
-          const connectedParticipation = await participants.findConnectedByUserId(user.id);
-          if (connectedParticipation) {
+        const existing = await participants.findByRoomSession(session.id);
+        const existingUser = existing.find(p => p.userId === user.id);
+        if (existingUser?.status === 'CONNECTED') {
+          const active = await participantSessions.findActiveByParticipantId(existingUser.id);
+          if (active)
             throw new ApplicationError(
               'CONFLICT',
-              'This user already has an active room participation.'
+              'This user already has an active session in the room.'
             );
-          }
-
-          const listenerCount = existing.filter(
-            p => p.status === 'CONNECTED' && p.audioRole === 'LISTENER'
-          ).length;
-          const speakerCount = existing.filter(
-            p => p.status === 'CONNECTED' && p.audioRole === 'SPEAKER'
-          ).length;
-          const coHostCount = existing.filter(
-            p => p.status === 'CONNECTED' && p.managementRole === 'CO_HOST'
-          ).length;
-          assertCanAddListener({
-            listeners: listenerCount,
-            speakers: speakerCount,
-            coHosts: coHostCount,
-          });
-          const now = this.clock.now();
-          const isHostParticipation = room.hostUserId === user.id;
-          const participant = isHostParticipation
-            ? createHostParticipant({
-                id: this.ids.next() as ReturnType<typeof createHostParticipant>['id'],
-                roomId: room.id,
-                roomSessionId: session.id,
-                userId: user.id as ReturnType<typeof createHostParticipant>['userId'],
-                joinedAt: now,
-              })
-            : createParticipant({
-                id: this.ids.next() as ReturnType<typeof createParticipant>['id'],
-                roomId: room.id,
-                roomSessionId: session.id,
-                userId: user.id as ReturnType<typeof createParticipant>['userId'],
-                joinedAt: now,
-              });
-          const participantSession = createParticipantSession({
-            id: this.ids.next() as ReturnType<typeof createParticipantSession>['id'],
-            participantId: participant.id,
-            connectionId: command.connectionId,
-            connectedAt: now,
-          });
-          await participants.save(participant);
-          await participantSessions.save(participantSession);
-          return {
-            roomId: participant.roomId,
-            roomSessionId: participant.roomSessionId,
-            participantId: participant.id,
-            participantSessionId: participantSession.id,
-            managementRole: participant.managementRole,
-            audioRole: participant.audioRole,
-          };
         }
-      );
+
+        const connectedParticipation = await participants.findConnectedByUserId(user.id);
+        if (connectedParticipation) {
+          throw new ApplicationError(
+            'CONFLICT',
+            'This user already has an active room participation.'
+          );
+        }
+
+        const listenerCount = existing.filter(
+          p => p.status === 'CONNECTED' && p.audioRole === 'LISTENER'
+        ).length;
+        const speakerCount = existing.filter(
+          p => p.status === 'CONNECTED' && p.audioRole === 'SPEAKER'
+        ).length;
+        const coHostCount = existing.filter(
+          p => p.status === 'CONNECTED' && p.managementRole === 'CO_HOST'
+        ).length;
+        assertCanAddListener({
+          listeners: listenerCount,
+          speakers: speakerCount,
+          coHosts: coHostCount,
+        });
+        const now = this.clock.now();
+        const isHostParticipation = room.hostUserId === user.id;
+        const participant = isHostParticipation
+          ? createHostParticipant({
+              id: this.ids.next() as ReturnType<typeof createHostParticipant>['id'],
+              roomId: room.id,
+              roomSessionId: session.id,
+              userId: user.id as ReturnType<typeof createHostParticipant>['userId'],
+              joinedAt: now,
+            })
+          : createParticipant({
+              id: this.ids.next() as ReturnType<typeof createParticipant>['id'],
+              roomId: room.id,
+              roomSessionId: session.id,
+              userId: user.id as ReturnType<typeof createParticipant>['userId'],
+              joinedAt: now,
+            });
+        const participantSession = createParticipantSession({
+          id: this.ids.next() as ReturnType<typeof createParticipantSession>['id'],
+          participantId: participant.id,
+          connectionId: command.connectionId,
+          connectedAt: now,
+        });
+        await participants.save(participant);
+        await participantSessions.save(participantSession);
+        return {
+          roomId: participant.roomId,
+          roomSessionId: participant.roomSessionId,
+          participantId: participant.id,
+          participantSessionId: participantSession.id,
+          managementRole: participant.managementRole,
+          audioRole: participant.audioRole,
+        };
+      }
+    );
     await this.events.publish({
       type: 'participant.joined',
       occurredAt: this.clock.now(),

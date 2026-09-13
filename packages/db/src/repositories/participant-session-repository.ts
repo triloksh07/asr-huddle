@@ -1,12 +1,12 @@
-import { and, eq } from "drizzle-orm";
-import type { ParticipantSessionRepository } from "@repo/application";
-import type { ParticipantSessionState } from "@repo/domain";
-import { participantSessions } from "../schema.js";
-import type { Database } from "../client.js";
-import { mapParticipantSession } from "../mappers.js";
+import { and, eq } from 'drizzle-orm';
+import type { ParticipantSessionRepository } from '@repo/application';
+import type { ParticipantSessionState } from '@repo/domain';
+import { participantSessions } from '../schema.js';
+import type { Database } from '../client.js';
+import { mapParticipantSession } from '../mappers.js';
 
 export class PostgresParticipantSessionRepository implements ParticipantSessionRepository {
-  constructor(private readonly database: Database["db"]) {}
+  constructor(private readonly database: Database['db']) {}
 
   async findById(sessionId: string) {
     const row = await this.database.query.participantSessions.findFirst({
@@ -19,7 +19,7 @@ export class PostgresParticipantSessionRepository implements ParticipantSessionR
     const row = await this.database.query.participantSessions.findFirst({
       where: and(
         eq(participantSessions.participantId, participantId),
-        eq(participantSessions.status, "ACTIVE"),
+        eq(participantSessions.status, 'ACTIVE')
       ),
     });
     return row ? mapParticipantSession(row) : null;
@@ -42,7 +42,7 @@ export class PostgresParticipantSessionRepository implements ParticipantSessionR
       .update(participantSessions)
       .set({
         connectionId,
-        status: "ACTIVE",
+        status: 'ACTIVE',
         connectedAt,
         disconnectedAt: null,
         recoverableUntil: null,
@@ -53,7 +53,7 @@ export class PostgresParticipantSessionRepository implements ParticipantSessionR
         and(
           eq(participantSessions.id, sessionId),
           eq(participantSessions.connectionId, expectedConnectionId),
-          eq(participantSessions.status, "DISCONNECTED")
+          eq(participantSessions.status, 'DISCONNECTED')
         )
       )
       .returning();
@@ -63,10 +63,10 @@ export class PostgresParticipantSessionRepository implements ParticipantSessionR
   async save(session: ParticipantSessionState): Promise<void> {
     const status =
       session.disconnectedAt === null
-        ? "ACTIVE"
+        ? 'ACTIVE'
         : session.intentionalLeave
-          ? "CLOSED"
-          : "DISCONNECTED";
+          ? 'CLOSED'
+          : 'DISCONNECTED';
 
     await this.database
       .insert(participantSessions)
