@@ -72,7 +72,10 @@ export class CommandRouter {
     this.handlers.set(handler.type, handler);
   }
 
-  async dispatch(context: RealtimeCommandContext, raw: unknown): Promise<RealtimeResponse> {
+  async dispatch(
+    context: RealtimeCommandContext,
+    raw: unknown,
+  ): Promise<RealtimeResponse> {
     const parsed = envelopeSchema.safeParse(raw);
 
     if (!parsed.success) {

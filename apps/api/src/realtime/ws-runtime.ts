@@ -112,6 +112,7 @@ export function createRealtimeRuntime(
             await disconnectRoom.execute({
               participantId,
               participantSessionId,
+              connectionId,
               recoverableForMs: disconnectRecoveryMs,
             });
           } catch (error) {
