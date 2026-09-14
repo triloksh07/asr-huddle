@@ -1,5 +1,6 @@
 import { Device, types } from 'mediasoup-client';
 import type { MediaAudioState, ReactionType } from '@repo/media-contract';
+import { WebRtcAudioQualityCollector, type WebRtcAudioQualityListener } from './webrtc-quality.js';
 
 type Result<T> =
   | { requestId: string; type: string; ok: true; payload: T }
@@ -28,7 +29,6 @@ type ConsumeResult = {
   rtpParameters: any;
 };
 
-
 export interface JoinedSession {
   roomId: string;
   roomSessionId: string;
@@ -54,15 +54,19 @@ export class RoomAudioClient {
   private session?: JoinedSession;
   private microphoneTrack?: MediaStreamTrack;
 
+  private readonly qualityCollector: WebRtcAudioQualityCollector;
   private readonly messageHandler = (event: MessageEvent) => this.handleMessage(event.data);
 
   constructor(
     ws: WebSocket,
     private readonly onAudioTrack: (track: MediaStreamTrack) => void,
-    private readonly onRealtimeEvent: (event: RealtimeEvent) => void = () => {}
+    private readonly onRealtimeEvent: (event: RealtimeEvent) => void = () => {},
+    onAudioQualitySample?: WebRtcAudioQualityListener
   ) {
     this.ws = ws;
+    this.qualityCollector = new WebRtcAudioQualityCollector(onAudioQualitySample ?? (() => {}));
     this.attachSocket(ws);
+    this.qualityCollector.start();
   }
 
   async join(roomId: string): Promise<JoinedSession> {
@@ -188,8 +192,6 @@ export class RoomAudioClient {
       }
     } else {
       if (this.producer) {
-        // The logical mute state is authoritative. Keep the track and transport
-        // available; a rebuilt producer is only created when canTransmitAudio is true.
         this.producer.close();
         this.producer = undefined;
       }
@@ -212,19 +214,29 @@ export class RoomAudioClient {
     if (this.device.loaded) return;
 
     const params = await this.createTransport('recv');
-    await this.device.load({ routerRtpCapabilities: params.rtpCapabilities });
+    await this.device.load({
+      routerRtpCapabilities: params.rtpCapabilities,
+    });
     this.recvTransport = this.configureRecvTransport(params);
   }
 
   private async ensureSendTransport(): Promise<void> {
-    if (this.sendTransport && !this.isTransportUnusable(this.sendTransport)) return;
+    if (this.sendTransport && !this.isTransportUnusable(this.sendTransport)) {
+      return;
+    }
 
     const params = await this.createTransport('send');
     this.sendTransport = this.configureSendTransport(params);
   }
 
   private async ensureRecvTransport(): Promise<void> {
-    if (this.recvTransport && !this.isTransportUnusable(this.recvTransport)) return;
+    if (this.recvTransport && !this.isTransportUnusable(this.recvTransport)) {
+      return;
+    }
+
+    if (this.recvTransport) {
+      this.qualityCollector.removeTransport(this.recvTransport.id);
+    }
 
     const params = await this.createTransport('recv');
     this.recvTransport = this.configureRecvTransport(params);
@@ -232,13 +244,16 @@ export class RoomAudioClient {
 
   private isTransportUnusable(transport?: types.Transport): boolean {
     if (!transport) return true;
-    const state = (transport as any).connectionState as string | undefined;
+    const state = transport.connectionState;
     return state === 'failed' || state === 'closed' || state === 'disconnected';
   }
 
   private closeSendMediaOnly(): void {
     this.producer?.close();
-    this.sendTransport?.close();
+    if (this.sendTransport) {
+      this.qualityCollector.removeTransport(this.sendTransport.id);
+      this.sendTransport.close();
+    }
     this.producer = undefined;
     this.sendTransport = undefined;
   }
@@ -295,6 +310,8 @@ export class RoomAudioClient {
         errback(error as Error);
       }
     });
+
+    this.qualityCollector.addTransport(transport);
   }
 
   private configureSendTransport(params: TransportResult): types.Transport {
@@ -323,6 +340,7 @@ export class RoomAudioClient {
 
   private configureRecvTransport(params: TransportResult): types.Transport {
     if (!this.device) throw new Error('Device is not initialized');
+
     const transport = this.device.createRecvTransport(params as any);
     this.wireConnect(transport);
     return transport;
@@ -344,6 +362,7 @@ export class RoomAudioClient {
 
   private async consumeProducer(producerId: string, participantId?: string): Promise<void> {
     if (!this.session || !this.recvTransport || !this.device) return;
+
     if (participantId === this.session.participantId || this.consumers.has(producerId)) {
       return;
     }
@@ -425,8 +444,16 @@ export class RoomAudioClient {
 
     for (const consumer of this.consumers.values()) consumer.close();
 
-    this.sendTransport?.close();
-    this.recvTransport?.close();
+    if (this.sendTransport) {
+      this.qualityCollector.removeTransport(this.sendTransport.id);
+      this.sendTransport.close();
+    }
+    if (this.recvTransport) {
+      this.qualityCollector.removeTransport(this.recvTransport.id);
+      this.recvTransport.close();
+    }
+
+    this.qualityCollector.stop();
 
     this.microphoneTrack = undefined;
     this.producer = undefined;

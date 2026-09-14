@@ -45,13 +45,20 @@ interface HistogramState {
   count: number;
 }
 
-const DEFAULT_DURATION_BUCKETS = [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000];
+const DEFAULT_DURATION_BUCKETS = [5, 10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000];
 
-function sanitizeMetricName(name: string): string {
-  if (!/^[a-zA-Z_:][a-zA-Z0-9_:]*$/.test(name)) {
-    throw new Error(`Invalid Prometheus metric name: ${name}`);
+function validateBuckets(buckets: readonly number[]): number[] {
+  const normalized = [...buckets].sort((a, b) => a - b);
+  if (
+    normalized.length === 0 ||
+    normalized.some(
+      (bucket, index) =>
+        !Number.isFinite(bucket) || bucket < 0 || (index > 0 && bucket === normalized[index - 1])
+    )
+  ) {
+    throw new Error('Histogram buckets must be finite, non-negative and unique.');
   }
-  return name;
+  return normalized;
 }
 
 export class SfuOperationalMetrics {
@@ -67,9 +74,7 @@ export class SfuOperationalMetrics {
   }
 
   setGauge(name: SfuGaugeName, value: number): void {
-    if (!Number.isFinite(value)) {
-      throw new Error(`Gauge value must be finite: ${value}`);
-    }
+    if (!Number.isFinite(value)) throw new Error(`Gauge value must be finite: ${value}`);
     this.gauges.set(name, value);
   }
 
@@ -82,41 +87,25 @@ export class SfuOperationalMetrics {
 
   observeDuration(durationMs: number, buckets = DEFAULT_DURATION_BUCKETS): void {
     if (!Number.isFinite(durationMs) || durationMs < 0) return;
-
-    const normalizedBuckets = [...buckets].sort((a, b) => a - b);
-    if (
-      normalizedBuckets.length === 0 ||
-      normalizedBuckets.some(
-        (bucket, index) =>
-          !Number.isFinite(bucket) ||
-          bucket < 0 ||
-          (index > 0 && bucket === normalizedBuckets[index - 1])
-      )
-    ) {
-      throw new Error('Histogram buckets must be finite, non-negative and unique.');
-    }
-
+    const normalized = validateBuckets(buckets);
     let state = this.histograms.get(SfuMetricName.MediaOperationDurationMs);
     if (!state) {
       state = {
-        buckets: normalizedBuckets,
-        counts: new Array(normalizedBuckets.length).fill(0),
+        buckets: normalized,
+        counts: new Array(normalized.length).fill(0),
         sum: 0,
         count: 0,
       };
       this.histograms.set(SfuMetricName.MediaOperationDurationMs, state);
     }
-
     if (
-      state.buckets.length !== normalizedBuckets.length ||
-      state.buckets.some((bucket, index) => bucket !== normalizedBuckets[index])
+      state.buckets.length !== normalized.length ||
+      state.buckets.some((bucket, index) => bucket !== normalized[index])
     ) {
       throw new Error('Histogram buckets cannot change after first observation.');
     }
-
     state.count += 1;
     state.sum += durationMs;
-
     for (let index = 0; index < state.buckets.length; index += 1) {
       if (durationMs <= state.buckets[index]) state.counts[index] += 1;
     }
@@ -134,33 +123,22 @@ export class SfuOperationalMetrics {
     this.setGauge(SfuMetricName.ProcessUptimeSeconds, process.uptime());
 
     const lines: string[] = [];
-    const emitHelp = (
-      name: string,
-      help: string,
-      kind: 'counter' | 'gauge' | 'histogram'
-    ): void => {
-      lines.push(`# HELP ${name} ${help}`);
-      lines.push(`# TYPE ${name} ${kind}`);
+    const help = (name: string, description: string, type: string): void => {
+      lines.push(`# HELP ${name} ${description}`, `# TYPE ${name} ${type}`);
     };
 
     for (const [name, value] of this.counters) {
-      emitHelp(name, `${name} runtime metric.`, 'counter');
+      help(name, `${name} runtime metric.`, 'counter');
       lines.push(`${name} ${value}`);
     }
-
     for (const [name, value] of this.gauges) {
-      emitHelp(name, `${name} runtime metric.`, 'gauge');
+      help(name, `${name} runtime metric.`, 'gauge');
       lines.push(`${name} ${value}`);
     }
 
-    emitHelp(
-      SfuMetricName.ProcessCpuUserSecondsTotal,
-      'Process user CPU time in seconds.',
-      'counter'
-    );
+    help(SfuMetricName.ProcessCpuUserSecondsTotal, 'Process user CPU time in seconds.', 'counter');
     lines.push(`${SfuMetricName.ProcessCpuUserSecondsTotal} ${cpu.user / 1_000_000}`);
-
-    emitHelp(
+    help(
       SfuMetricName.ProcessCpuSystemSecondsTotal,
       'Process system CPU time in seconds.',
       'counter'
@@ -168,15 +146,16 @@ export class SfuOperationalMetrics {
     lines.push(`${SfuMetricName.ProcessCpuSystemSecondsTotal} ${cpu.system / 1_000_000}`);
 
     for (const [name, state] of this.histograms) {
-      emitHelp(name, `${name} runtime metric.`, 'histogram');
+      help(name, `${name} runtime metric.`, 'histogram');
       for (let index = 0; index < state.buckets.length; index += 1) {
         lines.push(`${name}_bucket{le="${state.buckets[index]}"} ${state.counts[index]}`);
       }
-      lines.push(`${name}_bucket{le="+Inf"} ${state.count}`);
-      lines.push(`${name}_sum ${state.sum}`);
-      lines.push(`${name}_count ${state.count}`);
+      lines.push(
+        `${name}_bucket{le="+Inf"} ${state.count}`,
+        `${name}_sum ${state.sum}`,
+        `${name}_count ${state.count}`
+      );
     }
-
     return `${lines.join('\n')}\n`;
   }
 }

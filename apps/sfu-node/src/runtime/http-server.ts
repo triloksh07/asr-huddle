@@ -48,7 +48,6 @@ export function createSfuHttpServer(
 
         response.statusCode = 200;
         response.setHeader('content-type', 'text/plain; version=0.0.4');
-
         response.end(
           [
             `asr_huddle_sfu_rooms_active ${diagnostics.activeRooms}`,
@@ -60,7 +59,6 @@ export function createSfuHttpServer(
             '',
           ].join('\n')
         );
-
         return;
       }
 
@@ -77,13 +75,11 @@ export function createSfuHttpServer(
         path: request.url ?? 'unknown',
         error: error instanceof Error ? error.message : 'unknown',
       });
-
       response.statusCode = 500;
       response.end('Internal server error.');
     }
   });
 
   server.listen(options.port, options.host ?? '0.0.0.0');
-
   return server;
 }
