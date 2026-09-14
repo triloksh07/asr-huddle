@@ -90,6 +90,7 @@ import { AuthService } from '../auth/auth-service.js';
 import { JwtService } from '../auth/jwt.js';
 import { RedisRateLimiter } from '../security/rate-limiter.js';
 import { RealtimeRateLimitPolicy } from '../security/realtime-rate-limit-policy.js';
+import { InstrumentedTransaction } from './instrumented-transaction.js';
 
 class SystemClock {
   now() {
@@ -111,6 +112,7 @@ export interface ApiRuntime {
   readonly metrics: RuntimeMetrics;
   readonly auth: AuthService;
   readonly rateLimiter: RedisRateLimiter;
+  readonly logger: StructuredLogger;
   readonly roomControl: RoomControl;
   readonly close: () => Promise<void>;
 }
@@ -123,7 +125,9 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     password: u.password || undefined,
   });
   await redis.connect();
-  const rateLimiter = new RedisRateLimiter(redis);
+  const metrics = new RuntimeMetrics();
+  const logger = new StructuredLogger();
+  const rateLimiter = new RedisRateLimiter(redis, 'asr:v1:rate-limit', metrics, logger);
   const users = new PostgresUserRepository(database.db);
   const jwt = new JwtService(config.jwtSecret, config.jwtIssuer, config.jwtTtlSeconds);
   const auth = new AuthService(users, jwt);
@@ -133,11 +137,13 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
   const participantSessions = new PostgresParticipantSessionRepository(database.db);
   const requests = new PostgresSpeakerRequestRepository(database.db);
   const invitations = new PostgresInvitationRepository(database.db);
-  const transaction = new PostgresTransaction(database.db);
+  const transaction = new InstrumentedTransaction(
+    new PostgresTransaction(database.db),
+    metrics,
+    logger
+  );
   const ids = new UuidGenerator();
   const clock = new SystemClock();
-  const metrics = new RuntimeMetrics();
-  const logger = new StructuredLogger();
   const events = new RedisEventPublisher(redis, metrics, logger);
   const eventSequence = new RedisRealtimeEventSequence(redis);
   const registry = new ConnectionRegistry();
@@ -163,15 +169,14 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
   const deny = new DenySpeakerRequest(requests, participants, clock, events);
   const invite = new InviteSpeaker(invitations, participants, ids, clock, events);
   const respondInvite = new RespondInvitation(invitations, participants, clock, events);
-
   const setHandRaised = new SetHandRaised(participants, raisedHands, clock, events);
   const sendReaction = new SendReaction(participants, clock, events);
-
   const media = new RpcMediaService({
     baseUrl: config.mediaBaseUrl,
     authSecret: config.mediaRpcSecret,
+    metrics,
+    logger,
   });
-
   const mediaController = new MediaController(
     media,
     events,
@@ -195,7 +200,6 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     participantSessions,
     mediaController
   );
-
   const demote = new DemoteSpeaker(
     participants,
     clock,
@@ -203,7 +207,6 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     participantSessions,
     mediaController
   );
-
   const promoteCoHost = new PromoteCoHost(participants, roomSessions, clock, events);
   const demoteCoHost = new DemoteCoHost(participants, clock, events);
   const removeParticipant = new RemoveParticipant(
@@ -236,7 +239,6 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     mediaController,
     config.roomLifecycleIntervalMs
   );
-
   const rateLimitPolicy = new RealtimeRateLimitPolicy(config.rateLimits);
   const router = new CommandRouter({
     rateLimiter,
@@ -244,7 +246,6 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     maxRateLimitViolations: config.rateLimits.maxViolations,
     rateLimitViolationWindowMs: config.rateLimits.violationWindowMs,
   });
-
   router.register(new JoinRoomRealtimeCommand(join, snapshot, eventSequence));
   router.register(new LeaveRoomRealtimeCommand(leave));
   router.register(new EndRoomRealtimeCommand(roomControl));
@@ -301,6 +302,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     metrics,
     auth,
     rateLimiter,
+    logger,
     roomControl,
     close: async () => {
       lifecycle.stop();

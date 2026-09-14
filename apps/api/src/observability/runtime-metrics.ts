@@ -172,6 +172,21 @@ export class RuntimeMetrics {
     this.incrementCounter(RuntimeMetricName.RealtimeRateLimitedTotal);
   }
 
+  recordDependency(dependency: string, operation: string, ok: boolean, durationMs: number): void {
+    this.incrementCounter(RuntimeMetricName.DependencyOperationsTotal);
+    if (!ok) this.incrementCounter(RuntimeMetricName.DependencyFailuresTotal);
+    this.observeHistogram(RuntimeMetricName.DependencyDurationMs, durationMs);
+    this.incrementCounter(
+      `asr_huddle_dependency_${dependency}_${operation}_${ok ? 'success' : 'failure'}_total`
+    );
+  }
+
+  recordHttpRequest(statusCode: number, durationMs: number): void {
+    this.incrementCounter(RuntimeMetricName.HttpRequestsTotal);
+    if (statusCode >= 500) this.incrementCounter(RuntimeMetricName.HttpRequestFailuresTotal);
+    this.observeHistogram(RuntimeMetricName.HttpRequestDurationMs, durationMs);
+  }
+
   prometheus(registry: ConnectionRegistry): string {
     this.setGauge(RuntimeMetricName.ConnectionsActive, registry.size());
     this.setGauge(RuntimeMetricName.ProcessResidentMemoryBytes, process.memoryUsage().rss);

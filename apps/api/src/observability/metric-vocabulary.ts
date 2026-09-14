@@ -26,6 +26,12 @@ export const RuntimeMetricName = {
   SpeakerRequestsTotal: 'asr_huddle_speaker_requests_total',
   RealtimeCommandDurationMs: 'asr_huddle_realtime_command_duration_ms',
   DomainEventPublishDurationMs: 'asr_huddle_domain_event_publish_duration_ms',
+  DependencyOperationsTotal: 'asr_huddle_dependency_operations_total',
+  DependencyFailuresTotal: 'asr_huddle_dependency_failures_total',
+  DependencyDurationMs: 'asr_huddle_dependency_duration_ms',
+  HttpRequestsTotal: 'asr_huddle_http_requests_total',
+  HttpRequestFailuresTotal: 'asr_huddle_http_request_failures_total',
+  HttpRequestDurationMs: 'asr_huddle_http_request_duration_ms',
   ProcessResidentMemoryBytes: 'process_resident_memory_bytes',
 } as const;
 
@@ -58,13 +64,15 @@ export const RuntimeMetricHelp: Record<RuntimeMetricNameValue, string> = {
     'Realtime command handling duration in milliseconds.',
   [RuntimeMetricName.DomainEventPublishDurationMs]:
     'Domain event publication duration in milliseconds.',
+  [RuntimeMetricName.DependencyOperationsTotal]: 'Total dependency operations.',
+  [RuntimeMetricName.DependencyFailuresTotal]: 'Total dependency operation failures.',
+  [RuntimeMetricName.DependencyDurationMs]: 'Dependency operation duration in milliseconds.',
+  [RuntimeMetricName.HttpRequestsTotal]: 'Total HTTP requests.',
+  [RuntimeMetricName.HttpRequestFailuresTotal]: 'Total HTTP requests completed with a 5xx status.',
+  [RuntimeMetricName.HttpRequestDurationMs]: 'HTTP request duration in milliseconds.',
   [RuntimeMetricName.ProcessResidentMemoryBytes]: 'Resident process memory in bytes.',
 };
 
-/**
- * Event vocabulary starts small and intentionally remains implementation-level.
- * Feature-specific lifecycle events are added in the instrumentation batches.
- */
 export const RuntimeLogEvent = {
   RealtimeCommandCompleted: 'realtime_command_completed',
   RealtimeProtocolViolation: 'realtime_protocol_violation',
@@ -75,7 +83,8 @@ export const RuntimeLogEvent = {
   RealtimeDisconnectPersistExhausted: 'realtime_disconnect_persist_exhausted',
   RealtimeEventPublishFailed: 'realtime_event_publish_failed',
   RealtimeEventPublished: 'realtime_event_published',
-  DependencyFailure: 'dependency_failure',
+  DependencyOperationFailed: 'dependency_operation_failed',
+  HttpRequestCompleted: 'http_request_completed',
 } as const;
 
 export type RuntimeLogEventValue = (typeof RuntimeLogEvent)[keyof typeof RuntimeLogEvent];

@@ -42,6 +42,21 @@ export async function startServer(runtime: ApiRuntime): Promise<RunningServer> {
   app.disable('x-powered-by');
   app.use(express.json());
 
+  app.use((request, response, next) => {
+    const startedAt = performance.now();
+    response.once('finish', () => {
+      const durationMs = performance.now() - startedAt;
+      runtime.metrics.recordHttpRequest(response.statusCode, durationMs);
+      runtime.logger.info('http_request_completed', {
+        method: request.method,
+        path: request.path,
+        statusCode: response.statusCode,
+        durationMs: Math.round(durationMs * 100) / 100,
+      });
+    });
+    next();
+  });
+
   app.get('/health', (_request, response) => {
     response.status(200).json({
       status: 'ok',
@@ -58,7 +73,7 @@ export async function startServer(runtime: ApiRuntime): Promise<RunningServer> {
       !(await enforceHttpRateLimit(
         runtime.rateLimiter,
         'http.auth.register',
-        request.ip ?? "",
+        request.ip ?? '',
         runtime.config.rateLimits.authRegisterLimit,
         runtime.config.rateLimits.authRegisterWindowMs,
         response
@@ -103,12 +118,11 @@ export async function startServer(runtime: ApiRuntime): Promise<RunningServer> {
   });
 
   app.post('/v1/auth/login', async (request, response) => {
-    
     if (
       !(await enforceHttpRateLimit(
         runtime.rateLimiter,
         'http.auth.login',
-        request.ip ?? "",
+        request.ip ?? '',
         runtime.config.rateLimits.authLoginLimit,
         runtime.config.rateLimits.authLoginWindowMs,
         response
