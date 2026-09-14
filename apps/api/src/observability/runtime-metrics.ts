@@ -127,11 +127,40 @@ export class RuntimeMetrics {
   /** Existing API retained for current instrumentation call sites. */
   recordEvent(type: string): void {
     this.incrementCounter(RuntimeMetricName.DomainEventsPublishedTotal);
-    if (type === 'participant.reconnected') {
-      this.incrementCounter(RuntimeMetricName.ParticipantReconnectsTotal);
-    }
-    if (type === 'room.ended') {
-      this.incrementCounter(RuntimeMetricName.RoomsEndedTotal);
+
+    switch (type) {
+      case 'room.created':
+        this.incrementCounter(RuntimeMetricName.RoomsCreatedTotal);
+        break;
+      case 'room.ended':
+        this.incrementCounter(RuntimeMetricName.RoomsEndedTotal);
+        break;
+      case 'participant.joined':
+        this.incrementCounter(RuntimeMetricName.ParticipantsJoinedTotal);
+        break;
+      case 'participant.left':
+        this.incrementCounter(RuntimeMetricName.ParticipantsLeftTotal);
+        break;
+      case 'participant.disconnected':
+        this.incrementCounter(RuntimeMetricName.ParticipantsDisconnectedTotal);
+        break;
+      case 'participant.reconnected':
+        this.incrementCounter(RuntimeMetricName.ParticipantReconnectsTotal);
+        break;
+      case 'participant.removed':
+        this.incrementCounter(RuntimeMetricName.ParticipantsRemovedTotal);
+        this.incrementCounter(RuntimeMetricName.ModerationActionsTotal);
+        break;
+      case 'participant.role.changed':
+        this.incrementCounter(RuntimeMetricName.ParticipantRoleChangesTotal);
+        break;
+      case 'participant.self_mute.changed':
+      case 'participant.moderation.mute.changed':
+        this.incrementCounter(RuntimeMetricName.ModerationActionsTotal);
+        break;
+      case 'speaker.request.created':
+        this.incrementCounter(RuntimeMetricName.SpeakerRequestsTotal);
+        break;
     }
   }
 

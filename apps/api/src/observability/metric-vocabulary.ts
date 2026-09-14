@@ -15,7 +15,17 @@ export const RuntimeMetricName = {
   RealtimeRateLimitedTotal: 'asr_huddle_realtime_rate_limited_total',
   DomainEventsPublishedTotal: 'asr_huddle_domain_events_published_total',
   ParticipantReconnectsTotal: 'asr_huddle_participant_reconnects_total',
+  RoomsCreatedTotal: 'asr_huddle_rooms_created_total',
   RoomsEndedTotal: 'asr_huddle_rooms_ended_total',
+  ParticipantsJoinedTotal: 'asr_huddle_participants_joined_total',
+  ParticipantsLeftTotal: 'asr_huddle_participants_left_total',
+  ParticipantsDisconnectedTotal: 'asr_huddle_participants_disconnected_total',
+  ParticipantsRemovedTotal: 'asr_huddle_participants_removed_total',
+  ParticipantRoleChangesTotal: 'asr_huddle_participant_role_changes_total',
+  ModerationActionsTotal: 'asr_huddle_moderation_actions_total',
+  SpeakerRequestsTotal: 'asr_huddle_speaker_requests_total',
+  RealtimeCommandDurationMs: 'asr_huddle_realtime_command_duration_ms',
+  DomainEventPublishDurationMs: 'asr_huddle_domain_event_publish_duration_ms',
   ProcessResidentMemoryBytes: 'process_resident_memory_bytes',
 } as const;
 
@@ -35,7 +45,19 @@ export const RuntimeMetricHelp: Record<RuntimeMetricNameValue, string> = {
     'Total realtime operations rejected by rate limiting.',
   [RuntimeMetricName.DomainEventsPublishedTotal]: 'Total realtime domain events published.',
   [RuntimeMetricName.ParticipantReconnectsTotal]: 'Total participant reconnects.',
+  [RuntimeMetricName.RoomsCreatedTotal]: 'Total rooms created.',
   [RuntimeMetricName.RoomsEndedTotal]: 'Total rooms ended.',
+  [RuntimeMetricName.ParticipantsJoinedTotal]: 'Total participant joins.',
+  [RuntimeMetricName.ParticipantsLeftTotal]: 'Total participant leaves.',
+  [RuntimeMetricName.ParticipantsDisconnectedTotal]: 'Total participant disconnects.',
+  [RuntimeMetricName.ParticipantsRemovedTotal]: 'Total participants removed by moderation.',
+  [RuntimeMetricName.ParticipantRoleChangesTotal]: 'Total participant role changes.',
+  [RuntimeMetricName.ModerationActionsTotal]: 'Total participant moderation actions.',
+  [RuntimeMetricName.SpeakerRequestsTotal]: 'Total speaker requests created.',
+  [RuntimeMetricName.RealtimeCommandDurationMs]:
+    'Realtime command handling duration in milliseconds.',
+  [RuntimeMetricName.DomainEventPublishDurationMs]:
+    'Domain event publication duration in milliseconds.',
   [RuntimeMetricName.ProcessResidentMemoryBytes]: 'Resident process memory in bytes.',
 };
 

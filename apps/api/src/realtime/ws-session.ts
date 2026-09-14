@@ -3,6 +3,7 @@ import { CommandRouter } from './command-router.js';
 import { ConnectionRegistry } from './connection-registry.js';
 import type { RealtimeConnection, RealtimeResponse, RealtimeTransport } from './types.js';
 import type { RuntimeMetrics } from '../observability/runtime-metrics.js';
+import { RuntimeMetricName } from '../observability/metric-vocabulary.js';
 
 export interface RealtimeSession {
   readonly connection: RealtimeConnection;
@@ -35,10 +36,23 @@ export function createRealtimeSession(
     connection,
 
     async receive(raw: unknown): Promise<RealtimeResponse> {
-      const response = await router.dispatch({ connection, transport }, raw);
-      metrics?.recordCommand(response.ok);
-      await transport.send(response);
-      return response;
+      const startedAt = performance.now();
+      try {
+        const response = await router.dispatch({ connection, transport }, raw);
+        metrics?.recordCommand(response.ok);
+        metrics?.observeHistogram(
+          RuntimeMetricName.RealtimeCommandDurationMs,
+          performance.now() - startedAt
+        );
+        await transport.send(response);
+        return response;
+      } catch (error) {
+        metrics?.observeHistogram(
+          RuntimeMetricName.RealtimeCommandDurationMs,
+          performance.now() - startedAt
+        );
+        throw error;
+      }
     },
 
     async close(code: number, reason: string): Promise<void> {
