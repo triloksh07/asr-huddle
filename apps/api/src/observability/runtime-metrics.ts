@@ -1,24 +1,182 @@
-import type { ConnectionRegistry } from "../realtime/connection-registry.js";
+import type { ConnectionRegistry } from '../realtime/connection-registry.js';
+import {
+  RuntimeMetricHelp,
+  RuntimeMetricName,
+  type RuntimeMetricNameValue,
+} from './metric-vocabulary.js';
 
-export class RuntimeMetrics {
-  private opened = 0; private closed = 0; private succeeded = 0; private failed = 0;
-  private events = 0; private reconnects = 0; private roomEnds = 0;
-  recordConnectionOpened() { this.opened += 1; }
-  recordConnectionClosed() { this.closed += 1; }
-  recordCommand(ok: boolean) { if (ok) this.succeeded += 1; else this.failed += 1; }
-  recordEvent(type: string) {
-    this.events += 1;
-    if (type === "participant.reconnected") this.reconnects += 1;
-    if (type === "room.ended") this.roomEnds += 1;
+type MetricKind = 'counter' | 'gauge' | 'histogram';
+
+interface HistogramState {
+  readonly buckets: readonly number[];
+  readonly counts: number[];
+  sum: number;
+  count: number;
+}
+
+const DEFAULT_HISTOGRAM_BUCKETS = [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000];
+
+function escapeLabelValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+}
+
+function sanitizeMetricName(name: string): string {
+  if (!/^[a-zA-Z_:][a-zA-Z0-9_:]*$/.test(name)) {
+    throw new Error(`Invalid Prometheus metric name: ${name}`);
   }
+  return name;
+}
+
+/**
+ * Small in-process metrics registry used by the runtime.
+ *
+ * This is deliberately not a replacement for a metrics backend. It keeps the
+ * runtime observable without introducing a second monitoring architecture and
+ * exposes Prometheus text for the existing /metrics endpoint.
+ */
+export class RuntimeMetrics {
+  private readonly counters = new Map<string, number>();
+  private readonly gauges = new Map<string, number>();
+  private readonly histograms = new Map<string, HistogramState>();
+
+  incrementCounter(name: string, value = 1): void {
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(`Counter increment must be a finite non-negative number: ${value}`);
+    }
+    const metricName = sanitizeMetricName(name);
+    this.counters.set(metricName, (this.counters.get(metricName) ?? 0) + value);
+  }
+
+  setGauge(name: string, value: number): void {
+    if (!Number.isFinite(value)) {
+      throw new Error(`Gauge value must be finite: ${value}`);
+    }
+    this.gauges.set(sanitizeMetricName(name), value);
+  }
+
+  incrementGauge(name: string, value = 1): void {
+    if (!Number.isFinite(value)) {
+      throw new Error(`Gauge increment must be finite: ${value}`);
+    }
+    const metricName = sanitizeMetricName(name);
+    this.gauges.set(metricName, (this.gauges.get(metricName) ?? 0) + value);
+  }
+
+  observeHistogram(name: string, value: number, buckets = DEFAULT_HISTOGRAM_BUCKETS): void {
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(`Histogram value must be a finite non-negative number: ${value}`);
+    }
+    const metricName = sanitizeMetricName(name);
+    const normalizedBuckets = [...buckets].sort((a, b) => a - b);
+    if (
+      normalizedBuckets.length === 0 ||
+      normalizedBuckets.some(
+        (bucket, index) =>
+          !Number.isFinite(bucket) ||
+          bucket < 0 ||
+          (index > 0 && bucket === normalizedBuckets[index - 1])
+      )
+    ) {
+      throw new Error(`Histogram buckets must be finite, non-negative and unique.`);
+    }
+
+    let state = this.histograms.get(metricName);
+    if (!state) {
+      state = {
+        buckets: normalizedBuckets,
+        counts: new Array(normalizedBuckets.length).fill(0),
+        sum: 0,
+        count: 0,
+      };
+      this.histograms.set(metricName, state);
+    }
+    if (
+      state.buckets.length !== normalizedBuckets.length ||
+      state.buckets.some((bucket, i) => bucket !== normalizedBuckets[i])
+    ) {
+      throw new Error(`Histogram buckets cannot change after first observation: ${metricName}`);
+    }
+
+    state.count += 1;
+    state.sum += value;
+    for (let index = 0; index < state.buckets.length; index += 1) {
+      if (value <= state.buckets[index]) state.counts[index] += 1;
+    }
+  }
+
+  /** Existing API retained for current instrumentation call sites. */
+  recordConnectionOpened(): void {
+    this.incrementCounter(RuntimeMetricName.ConnectionsOpenedTotal);
+  }
+
+  /** Existing API retained for current instrumentation call sites. */
+  recordConnectionClosed(): void {
+    this.incrementCounter(RuntimeMetricName.ConnectionsClosedTotal);
+  }
+
+  /** Existing API retained for current instrumentation call sites. */
+  recordCommand(ok: boolean): void {
+    this.incrementCounter(RuntimeMetricName.RealtimeCommandsTotal);
+    this.incrementCounter(
+      ok
+        ? RuntimeMetricName.RealtimeCommandsSucceededTotal
+        : RuntimeMetricName.RealtimeCommandsFailedTotal
+    );
+  }
+
+  /** Existing API retained for current instrumentation call sites. */
+  recordEvent(type: string): void {
+    this.incrementCounter(RuntimeMetricName.DomainEventsPublishedTotal);
+    if (type === 'participant.reconnected') {
+      this.incrementCounter(RuntimeMetricName.ParticipantReconnectsTotal);
+    }
+    if (type === 'room.ended') {
+      this.incrementCounter(RuntimeMetricName.RoomsEndedTotal);
+    }
+  }
+
+  recordProtocolViolation(): void {
+    this.incrementCounter(RuntimeMetricName.RealtimeProtocolViolationsTotal);
+  }
+
+  recordRateLimited(): void {
+    this.incrementCounter(RuntimeMetricName.RealtimeRateLimitedTotal);
+  }
+
   prometheus(registry: ConnectionRegistry): string {
-    const values: Array<[string, number]> = [
-      ["asr_huddle_connections_active", registry.size()], ["asr_huddle_connections_opened_total", this.opened],
-      ["asr_huddle_connections_closed_total", this.closed], ["asr_huddle_realtime_commands_succeeded_total", this.succeeded],
-      ["asr_huddle_realtime_commands_failed_total", this.failed], ["asr_huddle_domain_events_published_total", this.events],
-      ["asr_huddle_participant_reconnects_total", this.reconnects], ["asr_huddle_rooms_ended_total", this.roomEnds],
-      ["process_resident_memory_bytes", process.memoryUsage().rss],
-    ];
-    return values.map(([name, value]) => `${name} ${value}`).join("\n") + "\n";
+    this.setGauge(RuntimeMetricName.ConnectionsActive, registry.size());
+    this.setGauge(RuntimeMetricName.ProcessResidentMemoryBytes, process.memoryUsage().rss);
+
+    const lines: string[] = [];
+    const emittedHelp = new Set<string>();
+    const emitHelp = (name: string, kind: MetricKind): void => {
+      if (emittedHelp.has(name)) return;
+      const help = RuntimeMetricHelp[name as RuntimeMetricNameValue] ?? `${name} runtime metric.`;
+      lines.push(`# HELP ${name} ${help}`);
+      lines.push(`# TYPE ${name} ${kind}`);
+      emittedHelp.add(name);
+    };
+
+    for (const [name, value] of this.counters) {
+      emitHelp(name, 'counter');
+      lines.push(`${name} ${value}`);
+    }
+    for (const [name, value] of this.gauges) {
+      emitHelp(name, 'gauge');
+      lines.push(`${name} ${value}`);
+    }
+    for (const [name, state] of this.histograms) {
+      emitHelp(name, 'histogram');
+      let cumulative = 0;
+      state.buckets.forEach((bucket, index) => {
+        cumulative = state.counts[index];
+        lines.push(`${name}_bucket{le="${escapeLabelValue(String(bucket))}"} ${cumulative}`);
+      });
+      lines.push(`${name}_bucket{le="+Inf"} ${state.count}`);
+      lines.push(`${name}_sum ${state.sum}`);
+      lines.push(`${name}_count ${state.count}`);
+    }
+
+    return `${lines.join('\n')}\n`;
   }
 }
