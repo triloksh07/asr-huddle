@@ -29,13 +29,15 @@ export class SetSelfMute {
     const participant = await this.participants.findById(command.participantId);
     if (!participant) throw new ApplicationError('NOT_FOUND', 'Participant was not found.');
     const updated = setSelfMuted(participant, command.muted);
-    await this.participants.save(updated);
 
     if (command.muted && this.media && this.participantSessions) {
       const activeSession = await this.participantSessions.findActiveByParticipantId(
         participant.id
       );
       if (activeSession) {
+        // Fail safe: revoke the live media capability before committing the durable mute state.
+        // If the SFU is unavailable, the participant remains unchanged rather than leaving a
+        // muted participant with a live producer.
         await this.media.revokeAudioProduction({
           roomId: participant.roomId,
           roomSessionId: participant.roomSessionId,
@@ -44,6 +46,8 @@ export class SetSelfMute {
         });
       }
     }
+
+    await this.participants.save(updated);
 
     await this.events.publish({
       type: 'participant.self_mute.changed',

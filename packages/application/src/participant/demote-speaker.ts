@@ -1,6 +1,11 @@
 import { assertCanModerate, demoteToListener } from '@repo/domain';
 import { ApplicationError } from '../errors.js';
-import type { ApplicationClock, EventPublisher, ParticipantRepository } from '../ports.js';
+import type {
+  ApplicationClock,
+  EventPublisher,
+  ParticipantRepository,
+  ParticipantSessionRepository,
+} from '../ports.js';
 
 export interface ParticipantAudioRevocation {
   revokeAudioProduction(context: {
@@ -16,7 +21,7 @@ export class DemoteSpeaker {
     private readonly participants: ParticipantRepository,
     private readonly clock: ApplicationClock,
     private readonly events: EventPublisher,
-    private readonly participantSessions?: import('../ports.js').ParticipantSessionRepository,
+    private readonly participantSessions?: ParticipantSessionRepository,
     private readonly media?: ParticipantAudioRevocation
   ) {}
 
@@ -28,11 +33,10 @@ export class DemoteSpeaker {
     if (t.roomId !== m.roomId)
       throw new ApplicationError('FORBIDDEN', 'Participants are not in the same room.');
 
-    const updated = demoteToListener(t);
-    await this.participants.save(updated);
-
     const activeSession = await this.participantSessions?.findActiveByParticipantId(t.id);
     if (this.media && activeSession) {
+      // Demotion removes transmit authorization, so revoke the live producer before changing
+      // durable role state. If media cleanup fails, the role remains unchanged.
       await this.media.revokeAudioProduction({
         roomId: t.roomId,
         roomSessionId: t.roomSessionId,
@@ -40,6 +44,9 @@ export class DemoteSpeaker {
         participantSessionId: activeSession.id,
       });
     }
+
+    const updated = demoteToListener(t);
+    await this.participants.save(updated);
 
     await this.events.publish({
       type: 'participant.role.changed',

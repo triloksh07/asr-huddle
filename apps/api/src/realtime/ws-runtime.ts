@@ -141,6 +141,53 @@ export function createRealtimeRuntime(
         }
       };
 
+      const persistDisconnect = async (
+        participantId: Parameters<DisconnectRoom['execute']>[0]['participantId'],
+        participantSessionId: Parameters<DisconnectRoom['execute']>[0]['participantSessionId']
+      ): Promise<void> => {
+        const retryDelaysMs = [250, 500, 1_000, 2_000, 5_000] as const;
+
+        for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+          try {
+            await disconnectRoom.execute({
+              participantId,
+              participantSessionId,
+              connectionId,
+              recoverableForMs: disconnectRecoveryMs,
+            });
+            if (attempt > 0) {
+              logger?.info('realtime_disconnect_persist_recovered', {
+                connectionId,
+                participantId,
+                participantSessionId,
+                attempts: attempt + 1,
+              });
+            }
+            return;
+          } catch (error) {
+            const delayMs = retryDelaysMs[attempt];
+            logger?.error('realtime_disconnect_persist_failed', {
+              connectionId,
+              participantId,
+              participantSessionId,
+              attempt: attempt + 1,
+              retryInMs: delayMs ?? null,
+              error: error instanceof Error ? error.message : 'unknown',
+            });
+
+            if (delayMs === undefined) break;
+            await new Promise<void>(resolve => setTimeout(resolve, delayMs));
+          }
+        }
+
+        logger?.error('realtime_disconnect_persist_exhausted', {
+          connectionId,
+          participantId,
+          participantSessionId,
+          message: 'Durable disconnect state could not be persisted during this process lifetime.',
+        });
+      };
+
       const finalizeConnection = async () => {
         if (finalized) return;
         finalized = true;
@@ -151,19 +198,7 @@ export function createRealtimeRuntime(
         const { roomId, roomSessionId, participantId, participantSessionId } = registered;
 
         if (roomId && roomSessionId && participantId && participantSessionId) {
-          try {
-            await disconnectRoom.execute({
-              participantId,
-              participantSessionId,
-              connectionId,
-              recoverableForMs: disconnectRecoveryMs,
-            });
-          } catch (error) {
-            logger?.error('realtime_disconnect_persist_failed', {
-              connectionId,
-              error: error instanceof Error ? error.message : 'unknown',
-            });
-          }
+          await persistDisconnect(participantId, participantSessionId);
         }
 
         registry.remove(connectionId);

@@ -42,11 +42,10 @@ export class MuteParticipant {
     if (target.audioRole !== 'SPEAKER')
       throw new ApplicationError('INVALID_TARGET', 'Only speakers can be moderator-muted.');
 
-    const updated = setModeratorMuted(target, true);
-    await this.participants.save(updated);
-
     const activeSession = await this.participantSessions.findActiveByParticipantId(target.id);
     if (this.media && activeSession) {
+      // Revoke live transmission first. A failed SFU operation must not leave the target
+      // transmitting after the authoritative moderation action is committed.
       await this.media.revokeAudioProduction({
         roomId: target.roomId,
         roomSessionId: target.roomSessionId,
@@ -54,6 +53,9 @@ export class MuteParticipant {
         participantSessionId: activeSession.id,
       });
     }
+
+    const updated = setModeratorMuted(target, true);
+    await this.participants.save(updated);
 
     const now = this.clock.now();
     await this.events.publish({

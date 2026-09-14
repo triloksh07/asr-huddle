@@ -40,6 +40,18 @@ export class RemoveParticipant {
     }
     assertCanModerateTarget(moderator, target);
 
+    const session = await this.sessions.findActiveByParticipantId(target.id);
+    if (session) {
+      // Removal revokes the participant's entire media session. Do this before committing the
+      // removal so an SFU failure cannot leave a removed participant's media resources alive.
+      await this.runtime.closeMedia({
+        roomId: target.roomId,
+        roomSessionId: target.roomSessionId,
+        participantId: target.id,
+        participantSessionId: session.id,
+      });
+    }
+
     const updated = markRemoved(target, this.clock.now());
     const request = await this.requests.findPendingByParticipantId(target.id);
     if (request) {
@@ -61,16 +73,6 @@ export class RemoveParticipant {
       selfMuted: true,
       moderatorMuted: false,
     });
-
-    const session = await this.sessions.findActiveByParticipantId(target.id);
-    if (session) {
-      await this.runtime.closeMedia({
-        roomId: target.roomId,
-        roomSessionId: target.roomSessionId,
-        participantId: target.id,
-        participantSessionId: session.id,
-      });
-    }
 
     const now = this.clock.now();
     await this.events.publish({
