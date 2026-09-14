@@ -21,20 +21,20 @@ export function createSfuHttpServer(
     mediaRpcSecret: string;
     metrics?: SfuOperationalMetrics;
     logger?: SfuStructuredLogger;
+    isReady?: () => boolean;
   }
 ) {
   const metrics = options.metrics ?? new SfuOperationalMetrics();
-
   const logger = options.logger ?? new SfuStructuredLogger();
-
   const rpc = new MediaRpcServer(media, options.mediaRpcSecret, metrics, logger);
 
   const server = createServer(async (request: IncomingMessage, response: ServerResponse) => {
     try {
       if (request.url === '/healthz' && request.method === 'GET') {
-        response.statusCode = 200;
+        const ready = options.isReady?.() ?? true;
+        response.statusCode = ready ? 200 : 503;
         response.setHeader('content-type', 'application/json');
-        response.end(JSON.stringify({ ok: true }));
+        response.end(JSON.stringify({ ok: ready }));
         return;
       }
 
@@ -56,7 +56,7 @@ export function createSfuHttpServer(
             `asr_huddle_sfu_producers_active ${diagnostics.activeProducers}`,
             `asr_huddle_sfu_consumers_active ${diagnostics.activeConsumers}`,
             `process_resident_memory_bytes ${process.memoryUsage().rss}`,
-            metrics.exposition(),
+            metrics.exposition().trimEnd(),
             '',
           ].join('\n')
         );

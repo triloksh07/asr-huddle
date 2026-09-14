@@ -27,13 +27,6 @@ function sanitizeMetricName(name: string): string {
   return name;
 }
 
-/**
- * Small in-process metrics registry used by the runtime.
- *
- * This is deliberately not a replacement for a metrics backend. It keeps the
- * runtime observable without introducing a second monitoring architecture and
- * exposes Prometheus text for the existing /metrics endpoint.
- */
 export class RuntimeMetrics {
   private readonly counters = new Map<string, number>();
   private readonly gauges = new Map<string, number>();
@@ -66,8 +59,10 @@ export class RuntimeMetrics {
     if (!Number.isFinite(value) || value < 0) {
       throw new Error(`Histogram value must be a finite non-negative number: ${value}`);
     }
+
     const metricName = sanitizeMetricName(name);
     const normalizedBuckets = [...buckets].sort((a, b) => a - b);
+
     if (
       normalizedBuckets.length === 0 ||
       normalizedBuckets.some(
@@ -77,7 +72,7 @@ export class RuntimeMetrics {
           (index > 0 && bucket === normalizedBuckets[index - 1])
       )
     ) {
-      throw new Error(`Histogram buckets must be finite, non-negative and unique.`);
+      throw new Error('Histogram buckets must be finite, non-negative and unique.');
     }
 
     let state = this.histograms.get(metricName);
@@ -90,31 +85,34 @@ export class RuntimeMetrics {
       };
       this.histograms.set(metricName, state);
     }
+
     if (
       state.buckets.length !== normalizedBuckets.length ||
-      state.buckets.some((bucket, i) => bucket !== normalizedBuckets[i])
+      state.buckets.some((bucket, index) => bucket !== normalizedBuckets[index])
     ) {
       throw new Error(`Histogram buckets cannot change after first observation: ${metricName}`);
     }
 
     state.count += 1;
     state.sum += value;
+
     for (let index = 0; index < state.buckets.length; index += 1) {
       if (value <= state.buckets[index]) state.counts[index] += 1;
     }
   }
 
-  /** Existing API retained for current instrumentation call sites. */
   recordConnectionOpened(): void {
     this.incrementCounter(RuntimeMetricName.ConnectionsOpenedTotal);
   }
 
-  /** Existing API retained for current instrumentation call sites. */
   recordConnectionClosed(): void {
     this.incrementCounter(RuntimeMetricName.ConnectionsClosedTotal);
   }
 
-  /** Existing API retained for current instrumentation call sites. */
+  recordConnectionError(): void {
+    this.incrementCounter(RuntimeMetricName.RealtimeConnectionErrorsTotal);
+  }
+
   recordCommand(ok: boolean): void {
     this.incrementCounter(RuntimeMetricName.RealtimeCommandsTotal);
     this.incrementCounter(
@@ -124,7 +122,6 @@ export class RuntimeMetrics {
     );
   }
 
-  /** Existing API retained for current instrumentation call sites. */
   recordEvent(type: string): void {
     this.incrementCounter(RuntimeMetricName.DomainEventsPublishedTotal);
 
@@ -164,6 +161,14 @@ export class RuntimeMetrics {
     }
   }
 
+  recordReconnectAttempt(): void {
+    this.incrementCounter(RuntimeMetricName.ParticipantReconnectAttemptsTotal);
+  }
+
+  recordReconnectFailure(): void {
+    this.incrementCounter(RuntimeMetricName.ParticipantReconnectFailuresTotal);
+  }
+
   recordProtocolViolation(): void {
     this.incrementCounter(RuntimeMetricName.RealtimeProtocolViolationsTotal);
   }
@@ -187,12 +192,23 @@ export class RuntimeMetrics {
     this.observeHistogram(RuntimeMetricName.HttpRequestDurationMs, durationMs);
   }
 
+  recordProcessResources(): void {
+    const memory = process.memoryUsage();
+    this.setGauge(RuntimeMetricName.ProcessResidentMemoryBytes, memory.rss);
+    this.setGauge(RuntimeMetricName.ProcessHeapUsedBytes, memory.heapUsed);
+    this.setGauge(RuntimeMetricName.ProcessHeapTotalBytes, memory.heapTotal);
+    this.setGauge(RuntimeMetricName.ProcessExternalMemoryBytes, memory.external);
+    this.setGauge(RuntimeMetricName.ProcessArrayBuffersBytes, memory.arrayBuffers);
+    this.setGauge(RuntimeMetricName.ProcessUptimeSeconds, process.uptime());
+  }
+
   prometheus(registry: ConnectionRegistry): string {
     this.setGauge(RuntimeMetricName.ConnectionsActive, registry.size());
-    this.setGauge(RuntimeMetricName.ProcessResidentMemoryBytes, process.memoryUsage().rss);
+    this.recordProcessResources();
 
     const lines: string[] = [];
     const emittedHelp = new Set<string>();
+
     const emitHelp = (name: string, kind: MetricKind): void => {
       if (emittedHelp.has(name)) return;
       const help = RuntimeMetricHelp[name as RuntimeMetricNameValue] ?? `${name} runtime metric.`;
@@ -205,17 +221,29 @@ export class RuntimeMetrics {
       emitHelp(name, 'counter');
       lines.push(`${name} ${value}`);
     }
+
     for (const [name, value] of this.gauges) {
       emitHelp(name, 'gauge');
       lines.push(`${name} ${value}`);
     }
+
+    const cpu = process.cpuUsage();
+    lines.push(
+      `# HELP ${RuntimeMetricName.ProcessCpuUserSecondsTotal} Process user CPU time in seconds.`,
+      `# TYPE ${RuntimeMetricName.ProcessCpuUserSecondsTotal} counter`,
+      `${RuntimeMetricName.ProcessCpuUserSecondsTotal} ${cpu.user / 1_000_000}`,
+      `# HELP ${RuntimeMetricName.ProcessCpuSystemSecondsTotal} Process system CPU time in seconds.`,
+      `# TYPE ${RuntimeMetricName.ProcessCpuSystemSecondsTotal} counter`,
+      `${RuntimeMetricName.ProcessCpuSystemSecondsTotal} ${cpu.system / 1_000_000}`
+    );
+
     for (const [name, state] of this.histograms) {
       emitHelp(name, 'histogram');
-      let cumulative = 0;
-      state.buckets.forEach((bucket, index) => {
-        cumulative = state.counts[index];
-        lines.push(`${name}_bucket{le="${escapeLabelValue(String(bucket))}"} ${cumulative}`);
-      });
+      for (let index = 0; index < state.buckets.length; index += 1) {
+        lines.push(
+          `${name}_bucket{le="${escapeLabelValue(String(state.buckets[index]))}"} ${state.counts[index]}`
+        );
+      }
       lines.push(`${name}_bucket{le="+Inf"} ${state.count}`);
       lines.push(`${name}_sum ${state.sum}`);
       lines.push(`${name}_count ${state.count}`);

@@ -120,7 +120,8 @@ export function createRealtimeRuntime(
         authenticated.transport,
         router,
         registry,
-        metrics
+        metrics,
+        logger
       );
 
       logger?.info('realtime_connection_opened', { connectionId, userId });
@@ -130,12 +131,15 @@ export function createRealtimeRuntime(
 
       const closeForProtocolViolation = async (code: string, reason: string) => {
         protocolViolations += 1;
+        metrics?.recordProtocolViolation();
+
         await transport.send({
           requestId: 'unknown',
           type: 'error',
           ok: false,
           error: { code, message: reason },
         });
+
         if (protocolViolations >= maxProtocolViolations) {
           await transport.close(1008, 'Protocol violation limit exceeded.');
         }
@@ -155,6 +159,7 @@ export function createRealtimeRuntime(
               connectionId,
               recoverableForMs: disconnectRecoveryMs,
             });
+
             if (attempt > 0) {
               logger?.info('realtime_disconnect_persist_recovered', {
                 connectionId,
@@ -166,6 +171,7 @@ export function createRealtimeRuntime(
             return;
           } catch (error) {
             const delayMs = retryDelaysMs[attempt];
+
             logger?.error('realtime_disconnect_persist_failed', {
               connectionId,
               participantId,
@@ -208,6 +214,7 @@ export function createRealtimeRuntime(
 
       socket.on('message', async data => {
         const message = decodeMessage(data);
+
         if (message === null) {
           await closeForProtocolViolation(
             'INVALID_MESSAGE',
@@ -217,6 +224,7 @@ export function createRealtimeRuntime(
         }
 
         const size = Buffer.byteLength(message, 'utf8');
+
         if (size > maxMessageBytes) {
           await transport.send({
             requestId: 'unknown',
@@ -241,13 +249,19 @@ export function createRealtimeRuntime(
 
         try {
           const response = await session.receive(raw);
+
           if (response.error && router.isProtocolViolation(response.error.code)) {
             protocolViolations += 1;
+            metrics?.recordProtocolViolation();
+
             if (protocolViolations >= maxProtocolViolations) {
               await transport.close(1008, 'Protocol violation limit exceeded.');
             }
           }
+
           if (response.error && router.isRateLimitViolation(response.error.code)) {
+            metrics?.recordRateLimited();
+
             if (router.shouldCloseForRateLimit(session.connection)) {
               await transport.close(1008, 'Rate-limit violation limit exceeded.');
             }
@@ -258,7 +272,10 @@ export function createRealtimeRuntime(
       });
 
       socket.on('close', () => void finalizeConnection());
-      socket.on('error', () => void finalizeConnection());
+      socket.on('error', () => {
+        metrics?.recordConnectionError();
+        void finalizeConnection();
+      });
     },
   };
 }
