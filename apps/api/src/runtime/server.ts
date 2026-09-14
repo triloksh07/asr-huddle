@@ -3,10 +3,38 @@ import express from 'express';
 import { WebSocketServer } from 'ws';
 import type { ApiRuntime } from './composition-root.js';
 import { serializeAuthCookie } from '../auth/auth-cookie.js';
+import { RateLimitInfrastructureError } from '../security/rate-limiter.js';
 
 export interface RunningServer {
   readonly server: http.Server;
   readonly close: () => Promise<void>;
+}
+
+async function enforceHttpRateLimit(
+  rateLimiter: ApiRuntime['rateLimiter'],
+  scope: string,
+  identifier: string,
+  limit: number,
+  windowMs: number,
+  response: express.Response
+): Promise<boolean> {
+  try {
+    const decision = await rateLimiter.consume(scope, identifier, { limit, windowMs });
+    if (decision.allowed) return true;
+
+    response.setHeader(
+      'Retry-After',
+      String(Math.max(1, Math.ceil(decision.retryAfterMs / 1_000)))
+    );
+    response.status(429).json({ error: 'Too many requests. Please try again later.' });
+    return false;
+  } catch (error) {
+    if (error instanceof RateLimitInfrastructureError) {
+      response.status(503).json({ error: 'This operation is temporarily unavailable.' });
+      return false;
+    }
+    throw error;
+  }
 }
 
 export async function startServer(runtime: ApiRuntime): Promise<RunningServer> {
@@ -26,6 +54,18 @@ export async function startServer(runtime: ApiRuntime): Promise<RunningServer> {
   });
 
   app.post('/v1/auth/register', async (request, response) => {
+    if (
+      !(await enforceHttpRateLimit(
+        runtime.rateLimiter,
+        'http.auth.register',
+        request.ip ?? "",
+        runtime.config.rateLimits.authRegisterLimit,
+        runtime.config.rateLimits.authRegisterWindowMs,
+        response
+      ))
+    )
+      return;
+
     const body = request.body as { name?: unknown; email?: unknown; password?: unknown };
     if (
       typeof body.name !== 'string' ||
@@ -63,6 +103,19 @@ export async function startServer(runtime: ApiRuntime): Promise<RunningServer> {
   });
 
   app.post('/v1/auth/login', async (request, response) => {
+    
+    if (
+      !(await enforceHttpRateLimit(
+        runtime.rateLimiter,
+        'http.auth.login',
+        request.ip ?? "",
+        runtime.config.rateLimits.authLoginLimit,
+        runtime.config.rateLimits.authLoginWindowMs,
+        response
+      ))
+    )
+      return;
+
     const body = request.body as { email?: unknown; password?: unknown };
     if (typeof body.email !== 'string' || typeof body.password !== 'string') {
       response.status(400).json({ error: 'email and password are required.' });
@@ -102,6 +155,19 @@ export async function startServer(runtime: ApiRuntime): Promise<RunningServer> {
       response.status(401).json({ error: 'Authentication is required.' });
       return;
     }
+
+    if (
+      !(await enforceHttpRateLimit(
+        runtime.rateLimiter,
+        'http.room.create',
+        userId,
+        runtime.config.rateLimits.roomCreateLimit,
+        runtime.config.rateLimits.roomCreateWindowMs,
+        response
+      ))
+    )
+      return;
+
     const body = request.body as {
       title?: unknown;
       description?: unknown;
@@ -117,11 +183,9 @@ export async function startServer(runtime: ApiRuntime): Promise<RunningServer> {
       (body.visibility !== 'PUBLIC' && body.visibility !== 'LINK_ONLY') ||
       ![60, 120, 300].includes(body.durationMinutes as number)
     ) {
-      response
-        .status(400)
-        .json({
-          error: 'title, description, visibility, and a 60/120/300 minute duration are required.',
-        });
+      response.status(400).json({
+        error: 'title, description, visibility, and a 60/120/300 minute duration are required.',
+      });
       return;
     }
     const created = await runtime.roomControl.create({

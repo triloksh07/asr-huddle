@@ -8,6 +8,9 @@ import type {
   RealtimeEnvelope,
   RealtimeResponse,
 } from './types.js';
+import { RealtimeRateLimitPolicy } from '../security/realtime-rate-limit-policy.js';
+import { RateLimitInfrastructureError } from '../security/rate-limiter.js';
+import type { RateLimiter } from '../security/rate-limiter.js';
 
 const envelopeSchema = z.object({
   requestId: z.string().min(1).max(128),
@@ -33,8 +36,14 @@ const PROTOCOL_VIOLATION_CODES = new Set([
   'DUPLICATE_REQUEST_ID',
 ]);
 
+const RATE_LIMIT_CODES = new Set(['RATE_LIMITED']);
+
 export interface CommandRouterOptions {
   readonly maxRecentRequestIds?: number;
+  readonly rateLimiter?: RateLimiter;
+  readonly rateLimitPolicy?: RealtimeRateLimitPolicy;
+  readonly maxRateLimitViolations?: number;
+  readonly rateLimitViolationWindowMs?: number;
 }
 
 function publicError(error: unknown): { code: string; message: string } {
@@ -55,14 +64,41 @@ function publicError(error: unknown): { code: string; message: string } {
 export class CommandRouter {
   private readonly handlers = new Map<string, RealtimeCommandHandler>();
   private readonly recentRequestIds = new WeakMap<RealtimeConnection, Set<string>>();
+  private readonly rateLimitViolations = new WeakMap<
+    RealtimeConnection,
+    { count: number; windowStartedAt: number }
+  >();
   private readonly maxRecentRequestIds: number;
+  private readonly rateLimiter?: RateLimiter;
+  private readonly rateLimitPolicy?: RealtimeRateLimitPolicy;
+  private readonly maxRateLimitViolations: number;
+  private readonly rateLimitViolationWindowMs: number;
 
   constructor(options: CommandRouterOptions = {}) {
     const maxRecentRequestIds = options.maxRecentRequestIds ?? 1_024;
     if (!Number.isInteger(maxRecentRequestIds) || maxRecentRequestIds < 1) {
       throw new Error('maxRecentRequestIds must be a positive integer.');
     }
+
+    const maxRateLimitViolations = options.maxRateLimitViolations ?? 3;
+    if (!Number.isInteger(maxRateLimitViolations) || maxRateLimitViolations < 1) {
+      throw new Error('maxRateLimitViolations must be a positive integer.');
+    }
+
+    const rateLimitViolationWindowMs = options.rateLimitViolationWindowMs ?? 10_000;
+    if (!Number.isInteger(rateLimitViolationWindowMs) || rateLimitViolationWindowMs < 1) {
+      throw new Error('rateLimitViolationWindowMs must be a positive integer.');
+    }
+
+    if (options.rateLimiter && !options.rateLimitPolicy) {
+      throw new Error('rateLimitPolicy is required when rateLimiter is configured.');
+    }
+
     this.maxRecentRequestIds = maxRecentRequestIds;
+    this.rateLimiter = options.rateLimiter;
+    this.rateLimitPolicy = options.rateLimitPolicy;
+    this.maxRateLimitViolations = maxRateLimitViolations;
+    this.rateLimitViolationWindowMs = rateLimitViolationWindowMs;
   }
 
   register(handler: RealtimeCommandHandler): void {
@@ -118,8 +154,12 @@ export class CommandRouter {
       };
     }
 
+    const rateLimitResponse = await this.checkRateLimit(context, envelope);
+    if (rateLimitResponse) return rateLimitResponse;
+
     try {
       const payload = await handler.handle(context, envelope);
+      this.clearRateLimitViolations(context.connection);
       return {
         requestId: envelope.requestId,
         type: `${envelope.type}.result`,
@@ -139,6 +179,83 @@ export class CommandRouter {
 
   isProtocolViolation(code: string): boolean {
     return PROTOCOL_VIOLATION_CODES.has(code);
+  }
+
+  isRateLimitViolation(code: string): boolean {
+    return RATE_LIMIT_CODES.has(code);
+  }
+
+  shouldCloseForRateLimit(connection: RealtimeConnection): boolean {
+    const violation = this.rateLimitViolations.get(connection);
+    if (!violation) return false;
+    if (Date.now() - violation.windowStartedAt >= this.rateLimitViolationWindowMs) {
+      this.rateLimitViolations.delete(connection);
+      return false;
+    }
+    return violation.count >= this.maxRateLimitViolations;
+  }
+
+  private async checkRateLimit(
+    context: RealtimeCommandContext,
+    envelope: RealtimeEnvelope
+  ): Promise<RealtimeResponse | null> {
+    if (!this.rateLimiter || !this.rateLimitPolicy) return null;
+
+    const checks = this.rateLimitPolicy.checks(context.connection, envelope);
+    if (checks.length === 0) return null;
+
+    try {
+      for (const check of checks) {
+        const decision = await this.rateLimiter.consume(check.scope, check.identifier, check.rule);
+
+        if (!decision.allowed) {
+          this.recordRateLimitViolation(context.connection);
+          return {
+            requestId: envelope.requestId,
+            type: `${envelope.type}.result`,
+            ok: false,
+            error: {
+              code: 'RATE_LIMITED',
+              message: 'Too many requests. Please try again later.',
+            },
+          };
+        }
+      }
+    } catch (error) {
+      if (error instanceof RateLimitInfrastructureError) {
+        return {
+          requestId: envelope.requestId,
+          type: `${envelope.type}.result`,
+          ok: false,
+          error: {
+            code: 'RATE_LIMIT_UNAVAILABLE',
+            message: 'This operation is temporarily unavailable.',
+          },
+        };
+      }
+      throw error;
+    }
+
+    return null;
+  }
+
+  private recordRateLimitViolation(connection: RealtimeConnection): void {
+    const now = Date.now();
+    const existing = this.rateLimitViolations.get(connection);
+
+    if (!existing || now - existing.windowStartedAt >= this.rateLimitViolationWindowMs) {
+      this.rateLimitViolations.set(connection, {
+        count: 1,
+        windowStartedAt: now,
+      });
+      return;
+    }
+
+    existing.count += 1;
+  }
+
+  private clearRateLimitViolations(connection: RealtimeConnection): void {
+    this.rateLimitViolations.delete(connection);
   }
 
   private recentRequestIdsFor(connection: RealtimeConnection): Set<string> {

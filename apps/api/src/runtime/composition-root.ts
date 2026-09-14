@@ -88,6 +88,9 @@ import { RuntimeMetrics } from '../observability/runtime-metrics.js';
 import { StructuredLogger } from '../observability/structured-logger.js';
 import { AuthService } from '../auth/auth-service.js';
 import { JwtService } from '../auth/jwt.js';
+import { RedisRateLimiter } from '../security/rate-limiter.js';
+import { RealtimeRateLimitPolicy } from '../security/realtime-rate-limit-policy.js';
+
 class SystemClock {
   now() {
     return new Date();
@@ -107,6 +110,7 @@ export interface ApiRuntime {
   readonly lifecycle: RoomLifecycleRuntime;
   readonly metrics: RuntimeMetrics;
   readonly auth: AuthService;
+  readonly rateLimiter: RedisRateLimiter;
   readonly roomControl: RoomControl;
   readonly close: () => Promise<void>;
 }
@@ -119,6 +123,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     password: u.password || undefined,
   });
   await redis.connect();
+  const rateLimiter = new RedisRateLimiter(redis);
   const users = new PostgresUserRepository(database.db);
   const jwt = new JwtService(config.jwtSecret, config.jwtIssuer, config.jwtTtlSeconds);
   const auth = new AuthService(users, jwt);
@@ -185,7 +190,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     participantSessions,
     mediaController
   );
-  
+
   const demote = new DemoteSpeaker(
     participants,
     clock,
@@ -226,7 +231,15 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     mediaController,
     config.roomLifecycleIntervalMs
   );
-  const router = new CommandRouter();
+  
+  const rateLimitPolicy = new RealtimeRateLimitPolicy(config.rateLimits);
+  const router = new CommandRouter({
+    rateLimiter,
+    rateLimitPolicy,
+    maxRateLimitViolations: config.rateLimits.maxViolations,
+    rateLimitViolationWindowMs: config.rateLimits.violationWindowMs,
+  });
+
   router.register(new JoinRoomRealtimeCommand(join, snapshot, eventSequence));
   router.register(new LeaveRoomRealtimeCommand(leave));
   router.register(new EndRoomRealtimeCommand(roomControl));
@@ -269,7 +282,8 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     metrics,
     logger,
     config.realtimeMaxMessageBytes,
-    config.realtimeMaxProtocolViolations
+    config.realtimeMaxProtocolViolations,
+    rateLimiter
   );
   lifecycle.start();
   return {
@@ -281,6 +295,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     lifecycle,
     metrics,
     auth,
+    rateLimiter,
     roomControl,
     close: async () => {
       lifecycle.stop();

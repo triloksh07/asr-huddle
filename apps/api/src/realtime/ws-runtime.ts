@@ -12,6 +12,8 @@ import type { RealtimeTransport } from './types.js';
 import type { MediaController } from '../media/media-controller.js';
 import type { RuntimeMetrics } from '../observability/runtime-metrics.js';
 import type { StructuredLogger } from '../observability/structured-logger.js';
+import { RateLimitInfrastructureError } from '../security/rate-limiter.js';
+import type { RateLimitRule, RateLimiter } from '../security/rate-limiter.js';
 
 export interface WebSocketLike {
   send(data: string): void;
@@ -38,6 +40,25 @@ function decodeMessage(data: unknown): string | null {
   return null;
 }
 
+function clientAddressFromRequest(request: unknown): string {
+  if (typeof request !== 'object' || request === null || !('socket' in request)) {
+    return 'unknown';
+  }
+
+  const socket = request.socket;
+  if (
+    typeof socket !== 'object' ||
+    socket === null ||
+    !('remoteAddress' in socket) ||
+    typeof socket.remoteAddress !== 'string' ||
+    socket.remoteAddress.length === 0
+  ) {
+    return 'unknown';
+  }
+
+  return socket.remoteAddress;
+}
+
 export function createRealtimeRuntime(
   router: CommandRouter,
   registry: ConnectionRegistry,
@@ -48,7 +69,9 @@ export function createRealtimeRuntime(
   metrics?: RuntimeMetrics,
   logger?: StructuredLogger,
   maxMessageBytes = DEFAULT_MAX_MESSAGE_BYTES,
-  maxProtocolViolations = DEFAULT_MAX_PROTOCOL_VIOLATIONS
+  maxProtocolViolations = DEFAULT_MAX_PROTOCOL_VIOLATIONS,
+  rateLimiter?: RateLimiter,
+  connectionRateLimit?: RateLimitRule
 ): RealtimeRuntime {
   if (!Number.isInteger(maxMessageBytes) || maxMessageBytes < 1) {
     throw new Error('maxMessageBytes must be a positive integer.');
@@ -59,6 +82,26 @@ export function createRealtimeRuntime(
 
   return {
     async accept(socket, request) {
+      if (rateLimiter && connectionRateLimit) {
+        try {
+          const decision = await rateLimiter.consume(
+            'realtime.connection',
+            clientAddressFromRequest(request),
+            connectionRateLimit
+          );
+          if (!decision.allowed) {
+            socket.close(1008, 'Connection rate limit exceeded.');
+            return;
+          }
+        } catch (error) {
+          if (error instanceof RateLimitInfrastructureError) {
+            socket.close(1013, 'Realtime protection is temporarily unavailable.');
+            return;
+          }
+          throw error;
+        }
+      }
+
       const userId = await authenticator.authenticate(request);
       const connectionId = randomUUID() as ConnectionId;
       const transport: RealtimeTransport = {
@@ -167,6 +210,11 @@ export function createRealtimeRuntime(
             protocolViolations += 1;
             if (protocolViolations >= maxProtocolViolations) {
               await transport.close(1008, 'Protocol violation limit exceeded.');
+            }
+          }
+          if (response.error && router.isRateLimitViolation(response.error.code)) {
+            if (router.shouldCloseForRateLimit(session.connection)) {
+              await transport.close(1008, 'Rate-limit violation limit exceeded.');
             }
           }
         } catch {
