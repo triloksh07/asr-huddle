@@ -5,9 +5,7 @@ dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
 
 function required(name: string): string {
   const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
+  if (!value) throw new Error(`Missing required environment variable: ${name}`);
   return value;
 }
 
@@ -31,9 +29,7 @@ function requiredPositiveInteger(
   name: string
 ): number {
   const parsed = positiveInteger(value, fallback, name);
-  if (parsed < 1) {
-    throw new Error(`${name} must be a positive integer.`);
-  }
+  if (parsed < 1) throw new Error(`${name} must be a positive integer.`);
   return parsed;
 }
 
@@ -68,6 +64,7 @@ export interface ApiConfig {
   readonly databaseUrl: string;
   readonly redisUrl: string;
   readonly mediaBaseUrl: string;
+  readonly mediaRpcSecret: string;
   readonly authMode: AuthMode;
   readonly participantDisconnectRecoveryMs: number;
   readonly roomLifecycleIntervalMs: number;
@@ -81,7 +78,6 @@ export interface ApiConfig {
 
 export function loadConfig(): ApiConfig {
   const authMode = (process.env.AUTH_MODE ?? 'development') as AuthMode;
-
   if (authMode !== 'development' && authMode !== 'production') {
     throw new Error(`Unsupported AUTH_MODE: ${authMode}`);
   }
@@ -91,6 +87,7 @@ export function loadConfig(): ApiConfig {
     databaseUrl: required('DATABASE_URL'),
     redisUrl: process.env.REDIS_URL ?? 'redis://127.0.0.1:6379',
     mediaBaseUrl: process.env.SFU_MEDIA_BASE_URL ?? 'http://127.0.0.1:4000',
+    mediaRpcSecret: requiredSecret('MEDIA_RPC_SECRET'),
     authMode,
     participantDisconnectRecoveryMs: positiveInteger(
       process.env.PARTICIPANT_DISCONNECT_RECOVERY_MS,

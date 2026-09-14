@@ -9,7 +9,6 @@ import type {
   MediaService,
   ProduceAudioCommand,
   ProduceAudioResult,
-  // CreateRoomMediaResult,
   ConsumeAudioResult,
   MediaCapabilities,
 } from '@repo/media-contract';
@@ -18,8 +17,33 @@ import { MediaControlError } from './media-errors.js';
 
 export interface MediaRpcClientOptions {
   baseUrl: string;
+  authSecret: string;
   requestTimeoutMs?: number;
   fetchImpl?: typeof fetch;
+}
+
+interface MediaRpcSuccessBody {
+  readonly requestId: string;
+  readonly ok: true;
+  readonly result: unknown;
+}
+
+interface MediaRpcFailureBody {
+  readonly requestId: string;
+  readonly ok: false;
+  readonly error: { readonly code: string; readonly message: string };
+}
+
+type MediaRpcResponseBody = MediaRpcSuccessBody | MediaRpcFailureBody;
+
+function isMediaRpcResponseBody(value: unknown): value is MediaRpcResponseBody {
+  if (!value || typeof value !== 'object') return false;
+  const body = value as Record<string, unknown>;
+  if (typeof body.requestId !== 'string' || typeof body.ok !== 'boolean') return false;
+  if (body.ok) return 'result' in body;
+  if (!body.error || typeof body.error !== 'object') return false;
+  const error = body.error as Record<string, unknown>;
+  return typeof error.code === 'string' && typeof error.message === 'string';
 }
 
 export class RpcMediaService implements MediaService {
@@ -31,19 +55,11 @@ export class RpcMediaService implements MediaService {
     this.timeoutMs = options.requestTimeoutMs ?? 5000;
   }
 
-  // createRouter(context: CreateRoomMediaContext) {
-  //   // return this.call<CreateRoomMediaResult>(mediaRpcMethods.createRouter, context);
-  //   return this.call(mediaRpcMethods.createRouter, context);
-  // }
-
   createRouter(context: CreateRoomMediaContext): Promise<{
     routerId: string;
     rtpCapabilities: MediaCapabilities;
   }> {
-    return this.call<{
-      routerId: string;
-      rtpCapabilities: MediaCapabilities;
-    }>(mediaRpcMethods.createRouter, context);
+    return this.call(mediaRpcMethods.createRouter, context);
   }
 
   createWebRtcTransport(context: JoinMediaContext): Promise<CreateTransportResult> {
@@ -58,8 +74,8 @@ export class RpcMediaService implements MediaService {
     return this.call(mediaRpcMethods.produceAudio, command);
   }
 
-  consumeAudio(command: ConsumeAudioCommand) {
-    return this.call<ConsumeAudioResult>(mediaRpcMethods.consumeAudio, command);
+  consumeAudio(command: ConsumeAudioCommand): Promise<ConsumeAudioResult> {
+    return this.call(mediaRpcMethods.consumeAudio, command);
   }
 
   listAudioProducers(context: JoinMediaContext): Promise<MediaProducerInfo[]> {
@@ -78,7 +94,7 @@ export class RpcMediaService implements MediaService {
     return this.call(mediaRpcMethods.closeRoom, context);
   }
 
-  private async call<T>(method: string, params: unknown): Promise<T> {
+  private async call<T>(method: string, params: object): Promise<T> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
@@ -87,6 +103,7 @@ export class RpcMediaService implements MediaService {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
+          authorization: `Bearer ${this.options.authSecret}`,
         },
         body: JSON.stringify({
           requestId: randomUUID(),
@@ -96,21 +113,26 @@ export class RpcMediaService implements MediaService {
         signal: controller.signal,
       });
 
-      let body: any;
+      let rawBody: unknown;
       try {
-        body = await response.json();
+        rawBody = await response.json();
       } catch {
         throw new MediaControlError('MEDIA_RPC_INVALID_RESPONSE', 'SFU returned invalid JSON.');
       }
 
-      if (!response.ok || body?.ok !== true) {
+      if (!isMediaRpcResponseBody(rawBody)) {
         throw new MediaControlError(
-          body?.error?.code ?? 'MEDIA_RPC_FAILED',
-          body?.error?.message ?? 'SFU media operation failed.'
+          'MEDIA_RPC_INVALID_RESPONSE',
+          'SFU returned an invalid response.'
         );
       }
 
-      return body.result as T;
+      if (!response.ok || rawBody.ok !== true) {
+        const failure = rawBody as MediaRpcFailureBody;
+        throw new MediaControlError(failure.error.code, failure.error.message);
+      }
+
+      return rawBody.result as T;
     } catch (error) {
       if (error instanceof MediaControlError) throw error;
       if (error instanceof DOMException && error.name === 'AbortError') {

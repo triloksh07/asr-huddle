@@ -166,7 +166,12 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
 
   const setHandRaised = new SetHandRaised(participants, raisedHands, clock, events);
   const sendReaction = new SendReaction(participants, clock, events);
-  const media = new RpcMediaService({ baseUrl: config.mediaBaseUrl });
+
+  const media = new RpcMediaService({
+    baseUrl: config.mediaBaseUrl,
+    authSecret: config.mediaRpcSecret,
+  });
+
   const mediaController = new MediaController(
     media,
     events,
@@ -231,7 +236,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     mediaController,
     config.roomLifecycleIntervalMs
   );
-  
+
   const rateLimitPolicy = new RealtimeRateLimitPolicy(config.rateLimits);
   const router = new CommandRouter({
     rateLimiter,

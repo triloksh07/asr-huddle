@@ -3,6 +3,7 @@ import { MediasoupMediaService } from './media/mediasoup-service.js';
 import { createSfuHttpServer } from './runtime/http-server.js';
 import { CONFIG } from './config.js';
 import { createRedisClient, RedisSequencedRealtimeEventPublisher } from '@repo/redis-models';
+
 async function main(): Promise<void> {
   console.log(`Starting SFU Node: ${CONFIG.sfuId}`);
   const redisUrl = new URL(CONFIG.redisUrl);
@@ -23,7 +24,11 @@ async function main(): Promise<void> {
     activeSpeakerIntervalMs: CONFIG.activeSpeakerIntervalMs,
     activeSpeakerMaxEntries: CONFIG.activeSpeakerMaxEntries,
   });
-  const server = createSfuHttpServer(media, { host: CONFIG.listenHost, port: CONFIG.port });
+  const server = createSfuHttpServer(media, {
+    host: CONFIG.listenHost,
+    port: CONFIG.port,
+    mediaRpcSecret: CONFIG.mediaRpcSecret,
+  });
   console.log(`SFU media RPC listening on http://${CONFIG.listenHost}:${CONFIG.port}`);
   const shutdown = async (signal: string) => {
     console.log(`Received ${signal}; shutting down SFU.`);
@@ -36,6 +41,7 @@ async function main(): Promise<void> {
   process.once('SIGINT', () => void shutdown('SIGINT'));
   process.once('SIGTERM', () => void shutdown('SIGTERM'));
 }
+
 main().catch(error => {
   console.error('Fatal SFU startup failure.', error);
   process.exit(1);
