@@ -3,9 +3,14 @@ import { MediasoupMediaService } from './media/mediasoup-service.js';
 import { createSfuHttpServer } from './runtime/http-server.js';
 import { CONFIG } from './config.js';
 import { createRedisClient, RedisSequencedRealtimeEventPublisher } from '@repo/redis-models';
+import { SfuOperationalMetrics } from './observability/sfu-operational-metrics.js';
+import { SfuStructuredLogger } from './observability/structured-logger.js';
 
 async function main(): Promise<void> {
-  console.log(`Starting SFU Node: ${CONFIG.sfuId}`);
+  // console.log(`Starting SFU Node: ${CONFIG.sfuId}`);
+  const metrics = new SfuOperationalMetrics();
+  const logger = new SfuStructuredLogger();
+  logger.info('sfu_starting', { sfuId: CONFIG.sfuId });
   const redisUrl = new URL(CONFIG.redisUrl);
   const redis = createRedisClient({
     host: redisUrl.hostname,
@@ -23,15 +28,22 @@ async function main(): Promise<void> {
     activeSpeakerThreshold: CONFIG.activeSpeakerThreshold,
     activeSpeakerIntervalMs: CONFIG.activeSpeakerIntervalMs,
     activeSpeakerMaxEntries: CONFIG.activeSpeakerMaxEntries,
+    metrics,
+    logger,
   });
   const server = createSfuHttpServer(media, {
     host: CONFIG.listenHost,
     port: CONFIG.port,
     mediaRpcSecret: CONFIG.mediaRpcSecret,
+    metrics,
+    logger,
   });
-  console.log(`SFU media RPC listening on http://${CONFIG.listenHost}:${CONFIG.port}`);
+  // console.log(`SFU media RPC listening on http://${CONFIG.listenHost}:${CONFIG.port}`);
+
+  logger.info('sfu_http_listening', { host: CONFIG.listenHost, port: CONFIG.port });
   const shutdown = async (signal: string) => {
-    console.log(`Received ${signal}; shutting down SFU.`);
+    // console.log(`Received ${signal}; shutting down SFU.`);
+    logger.info('sfu_shutdown_requested', { signal });
     await new Promise<void>((resolve, reject) =>
       server.close(error => (error ? reject(error) : resolve()))
     );
@@ -43,6 +55,14 @@ async function main(): Promise<void> {
 }
 
 main().catch(error => {
-  console.error('Fatal SFU startup failure.', error);
+  // console.error('Fatal SFU startup failure.', error);
+  console.error(
+    JSON.stringify({
+      timestamp: new Date().toISOString(),
+      level: 'error',
+      event: 'sfu_startup_failed',
+      error: error instanceof Error ? error.message : 'unknown',
+    })
+  );
   process.exit(1);
 });
