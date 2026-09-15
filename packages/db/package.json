@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "@repo/tsconfig": "workspace:*",
-    "drizzle-kit": "^0.24.0",
-    "typescript": "^5.5.4"
+    "drizzle-kit": "^0.31.10",
+    "typescript": "^7.0.2"
   }
 }
