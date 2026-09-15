@@ -15,24 +15,69 @@ export interface WebRtcAudioQualitySample {
   readonly roundTripTimeSeconds?: number;
 }
 
-interface MutableTransportSample {
-  readonly transport: types.Transport;
-  previousBytesSent: number;
-  previousBytesReceived: number;
-}
-
-function numberValue(value: unknown): number | undefined {
+function finiteNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-function maxNumber(current: number, next: number | undefined): number {
-  return next !== undefined && next > current ? next : current;
+interface AudioRtpTotals {
+  bytesSent: number;
+  bytesReceived: number;
+  packetsSent: number;
+  packetsReceived: number;
+  packetsLost: number;
+  jitterSeconds?: number;
+  roundTripTimeSeconds?: number;
+}
+
+function readAudioStats(stats: RTCStatsReport): AudioRtpTotals {
+  const totals: AudioRtpTotals = {
+    bytesSent: 0,
+    bytesReceived: 0,
+    packetsSent: 0,
+    packetsReceived: 0,
+    packetsLost: 0,
+  };
+
+  stats.forEach(stat => {
+    if (stat.type === 'outbound-rtp' && stat.kind === 'audio') {
+      totals.bytesSent += finiteNumber(stat.bytesSent) ?? 0;
+      totals.packetsSent += finiteNumber(stat.packetsSent) ?? 0;
+    }
+
+    if (stat.type === 'inbound-rtp' && stat.kind === 'audio') {
+      totals.bytesReceived += finiteNumber(stat.bytesReceived) ?? 0;
+      totals.packetsReceived += finiteNumber(stat.packetsReceived) ?? 0;
+      totals.packetsLost += finiteNumber(stat.packetsLost) ?? 0;
+
+      const jitter = finiteNumber(stat.jitter);
+      if (jitter !== undefined) {
+        totals.jitterSeconds =
+          totals.jitterSeconds === undefined ? jitter : Math.max(totals.jitterSeconds, jitter);
+      }
+    }
+
+    if (
+      stat.type === 'candidate-pair' &&
+      (stat as RTCIceCandidatePairStats).state === 'succeeded'
+    ) {
+      const roundTripTime = finiteNumber((stat as RTCIceCandidatePairStats).currentRoundTripTime);
+
+      if (roundTripTime !== undefined) {
+        totals.roundTripTimeSeconds =
+          totals.roundTripTimeSeconds === undefined
+            ? roundTripTime
+            : Math.max(totals.roundTripTimeSeconds, roundTripTime);
+      }
+    }
+  });
+
+  return totals;
 }
 
 export type WebRtcAudioQualityListener = (sample: WebRtcAudioQualitySample) => void;
 
 export class WebRtcAudioQualityCollector {
-  private readonly transports = new Map<string, MutableTransportSample>();
+  private readonly transports = new Map<string, types.Transport>();
   private timer?: ReturnType<typeof setInterval>;
   private running = false;
 
@@ -46,11 +91,7 @@ export class WebRtcAudioQualityCollector {
   }
 
   addTransport(transport: types.Transport): void {
-    this.transports.set(transport.id, {
-      transport,
-      previousBytesSent: 0,
-      previousBytesReceived: 0,
-    });
+    this.transports.set(transport.id, transport);
   }
 
   removeTransport(transportId: string): void {
@@ -59,15 +100,18 @@ export class WebRtcAudioQualityCollector {
 
   start(): void {
     if (this.running) return;
+
     this.running = true;
     this.timer = setInterval(() => {
       void this.sampleAll();
     }, this.intervalMs);
+
     void this.sampleAll();
   }
 
   stop(): void {
     this.running = false;
+
     if (this.timer !== undefined) {
       clearInterval(this.timer);
       this.timer = undefined;
@@ -77,66 +121,35 @@ export class WebRtcAudioQualityCollector {
   private async sampleAll(): Promise<void> {
     if (!this.running) return;
 
-    const samples = [...this.transports.values()];
     await Promise.all(
-      samples.map(async state => {
-        if (state.transport.closed) {
-          this.removeTransport(state.transport.id);
+      [...this.transports.values()].map(async transport => {
+        if (transport.closed) {
+          this.removeTransport(transport.id);
           return;
         }
 
         try {
-          const stats = await state.transport.getStats();
-          let bytesSent = 0;
-          let bytesReceived = 0;
-          let packetsSent = 0;
-          let packetsReceived = 0;
-          let packetsLost = 0;
-          let jitterSeconds: number | undefined;
-          let roundTripTimeSeconds: number | undefined;
+          const stats = await transport.getStats();
+          const totals = readAudioStats(stats);
 
-          stats.forEach(stat => {
-            if (stat.type === 'outbound-rtp' && stat.kind === 'audio') {
-              bytesSent = maxNumber(bytesSent, numberValue(stat.bytesSent));
-              packetsSent = maxNumber(packetsSent, numberValue(stat.packetsSent));
-            }
-
-            if (stat.type === 'inbound-rtp' && stat.kind === 'audio') {
-              bytesReceived = maxNumber(bytesReceived, numberValue(stat.bytesReceived));
-              packetsReceived = maxNumber(packetsReceived, numberValue(stat.packetsReceived));
-              packetsLost = Math.max(packetsLost, numberValue(stat.packetsLost) ?? 0);
-              jitterSeconds = numberValue(stat.jitter);
-            }
-
-            if (
-              stat.type === 'candidate-pair' &&
-              (stat as RTCIceCandidatePairStats).state === 'succeeded'
-            ) {
-              const candidatePair = stat as RTCIceCandidatePairStats;
-              roundTripTimeSeconds = numberValue(candidatePair.currentRoundTripTime);
-            }
-          });
-
-          const sample: WebRtcAudioQualitySample = {
+          this.listener({
             capturedAt: new Date().toISOString(),
-            transportId: state.transport.id,
-            direction: state.transport.direction,
-            connectionState: state.transport.connectionState,
-            iceGatheringState: state.transport.iceGatheringState,
-            bytesSent,
-            bytesReceived,
-            packetsSent,
-            packetsReceived,
-            packetsLost,
-            ...(jitterSeconds !== undefined ? { jitterSeconds } : {}),
-            ...(roundTripTimeSeconds !== undefined ? { roundTripTimeSeconds } : {}),
-          };
-
-          state.previousBytesSent = bytesSent;
-          state.previousBytesReceived = bytesReceived;
-          this.listener(sample);
+            transportId: transport.id,
+            direction: transport.direction,
+            connectionState: transport.connectionState,
+            iceGatheringState: transport.iceGatheringState,
+            bytesSent: totals.bytesSent,
+            bytesReceived: totals.bytesReceived,
+            packetsSent: totals.packetsSent,
+            packetsReceived: totals.packetsReceived,
+            packetsLost: totals.packetsLost,
+            ...(totals.jitterSeconds !== undefined ? { jitterSeconds: totals.jitterSeconds } : {}),
+            ...(totals.roundTripTimeSeconds !== undefined
+              ? { roundTripTimeSeconds: totals.roundTripTimeSeconds }
+              : {}),
+          });
         } catch {
-          // Stats are diagnostic and must never disrupt the audio session.
+          // Quality telemetry is diagnostic-only and must never interrupt media.
         }
       })
     );
