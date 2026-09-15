@@ -16,8 +16,8 @@
     "@repo/media-contract": "workspace:*",
     "@repo/redis-models": "workspace:*",
     "@repo/sfu-contract": "workspace:*",
-    "dotenv": "^16.6.1",
-    "ioredis": "^5.4.1",
+    "dotenv": "^17.4.2",
+    "ioredis": "^6.0.0",
     "mediasoup": "^3.26.0"
   },
   "devDependencies": {
