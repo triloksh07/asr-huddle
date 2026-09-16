@@ -1,180 +1,344 @@
-import { RoomAudioClient } from './audio/room-audio-client.js';
-// import { applyTheme } from './theme.js';
-
-// applyTheme();
+import './styles.css';
+import { RuntimeAudioClient } from './audio/room-audio-client.js';
 
 const api = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+
+type User = { id: string; name?: string; email?: string };
+
 let token = localStorage.getItem('asr.accessToken') ?? '';
-let client: RoomAudioClient | undefined;
+let user = JSON.parse(localStorage.getItem('asr.user') ?? 'null') as User | null;
+let client: RuntimeAudioClient | undefined;
+let currentRoomId = '';
 
-// DOM Elements
-const elements = {
-  statusMsg: document.querySelector<HTMLParagraphElement>('#status-msg')!,
-  logoutBtn: document.querySelector<HTMLButtonElement>('#logout-btn')!,
-  authSection: document.querySelector<HTMLElement>('#auth-section')!,
-  dashboardSection: document.querySelector<HTMLElement>('#dashboard-section')!,
-  roomSection: document.querySelector<HTMLElement>('#room-section')!,
-  roomsList: document.querySelector<HTMLDivElement>('#rooms-list')!,
-  audioStreams: document.querySelector<HTMLDivElement>('#audio-streams')!,
+const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
-  // Auth Inputs
-  nameInput: document.querySelector<HTMLInputElement>('#name')!,
-  emailInput: document.querySelector<HTMLInputElement>('#email')!,
-  passwordInput: document.querySelector<HTMLInputElement>('#password')!,
-  loginBtn: document.querySelector<HTMLButtonElement>('#login-btn')!,
-  registerBtn: document.querySelector<HTMLButtonElement>('#register-btn')!,
+const auth = $('auth');
+const session = $('session');
+const room = $('room');
+const error = $('error');
+const logEl = $('log');
+const identity = $('identity');
+const roomInfo = $('room-info');
+const wsState = $('ws-state');
+const roomState = $('room-state');
+const mediaState = $('media-state');
+const roleState = $('role-state');
+const producerState = $('producer-state');
+const consumerState = $('consumer-state');
+const mic = $('mic') as HTMLButtonElement;
+const requestBtn = $('request') as HTMLButtonElement;
+const approveBtn = $('approve') as HTMLButtonElement;
+const roomIdInput = $('room-id') as HTMLInputElement;
 
-  // Room Creation Inputs
-  titleInput: document.querySelector<HTMLInputElement>('#title')!,
-  descInput: document.querySelector<HTMLTextAreaElement>('#description')!,
-  visibilitySelect: document.querySelector<HTMLSelectElement>('#visibility')!,
-  durationSelect: document.querySelector<HTMLSelectElement>('#duration')!,
-  createBtn: document.querySelector<HTMLButtonElement>('#create-btn')!,
-  refreshBtn: document.querySelector<HTMLButtonElement>('#refresh-btn')!,
-  micBtn: document.querySelector<HTMLButtonElement>('#mic-btn')!,
-};
+function setError(message = '') {
+  error.textContent = message;
+}
 
-// Network Request Helper
-const request = async (path: string, init: RequestInit = {}) => {
-  const r = await fetch(`${api}${path}`, {
+function log(message: string) {
+  const line = `[${new Date().toLocaleTimeString()}] ${message}`;
+  logEl.textContent += `${line}\n`;
+  logEl.scrollTop = logEl.scrollHeight;
+  console.log(line);
+}
+
+function renderAuth() {
+  const signedIn = !!token && !!user;
+  auth.classList.toggle('hidden', signedIn);
+  session.classList.toggle('hidden', !signedIn);
+  if (signedIn)
+    identity.textContent = `${user!.name ?? ''} <${user!.email ?? ''}> | userId=${user!.id}`;
+}
+
+function updateMediaState() {
+  if (!client) return;
+  producerState.textContent = client.hasProducer ? 'active' : '—';
+  consumerState.textContent = String(client.consumerCount);
+}
+
+async function requestJson(path: string, init: RequestInit = {}) {
+  const response = await fetch(`${api}${path}`, {
     ...init,
     headers: {
       'content-type': 'application/json',
       ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(init.headers ?? {}),
     },
   });
-  const d = await r.json().catch(() => null);
-  if (!r.ok) throw new Error(d?.error ?? 'Request failed.');
-  return d;
-};
-
-// UI State Sync
-function syncView() {
-  if (token) {
-    elements.authSection.classList.add('hidden');
-    elements.dashboardSection.classList.remove('hidden');
-    elements.logoutBtn.classList.remove('hidden');
-    loadRooms();
-  } else {
-    elements.authSection.classList.remove('hidden');
-    elements.dashboardSection.classList.add('hidden');
-    elements.logoutBtn.classList.add('hidden');
-    elements.roomSection.classList.add('hidden');
-  }
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(data?.error ?? `HTTP ${response.status}`);
+  return data;
 }
 
-function setStatus(msg: string) {
-  elements.statusMsg.textContent = msg;
-}
-
-// Business Actions
-async function sign(path: string) {
+async function register() {
   try {
-    const email = elements.emailInput.value;
-    const password = elements.passwordInput.value;
-    const name = elements.nameInput.value;
-
-    const d = await request(path, {
+    setError('');
+    const data = await requestJson('/v1/auth/register', {
       method: 'POST',
-      body: JSON.stringify(
-        path.endsWith('register') ? { name, email, password } : { email, password }
-      ),
+      body: JSON.stringify({
+        name: ($('name') as HTMLInputElement).value.trim(),
+        email: ($('email') as HTMLInputElement).value.trim(),
+        password: ($('password') as HTMLInputElement).value,
+      }),
     });
-
-    token = d.accessToken;
-    localStorage.setItem('asr.accessToken', token);
-    setStatus('Signed in.');
-    syncView();
+    setSession(data);
   } catch (e) {
-    setStatus((e as Error).message);
+    setError((e as Error).message);
   }
 }
 
-async function loadRooms() {
+async function login() {
   try {
-    const d = await request('/v1/rooms');
-    elements.roomsList.innerHTML =
-      d.rooms
-        .map(
-          (r: any) =>
-            `<article class="surface room">
-              <strong>${r.title}</strong>
-              <span class="muted">${r.description}</span>
-              <button class="button secondary" data-room="${r.id}">Join</button>
-            </article>`
-        )
-        .join('') || '<p class="muted">No public rooms are live.</p>';
-
-    elements.roomsList
-      .querySelectorAll<HTMLButtonElement>('[data-room]')
-      .forEach(b => (b.onclick = () => joinRoom(b.dataset.room!)));
+    setError('');
+    const data = await requestJson('/v1/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: ($('email') as HTMLInputElement).value.trim(),
+        password: ($('password') as HTMLInputElement).value,
+      }),
+    });
+    setSession(data);
   } catch (e) {
-    elements.roomsList.textContent = (e as Error).message;
+    setError((e as Error).message);
   }
+}
+
+function setSession(data: any) {
+  token = data.accessToken;
+  user = data.user;
+  localStorage.setItem('asr.accessToken', token);
+  localStorage.setItem('asr.user', JSON.stringify(user));
+  renderAuth();
+  log(`Authenticated userId=${user.id}`);
 }
 
 async function createRoom() {
   try {
-    const title = elements.titleInput.value;
-    const description = elements.descInput.value;
-    const visibility = elements.visibilitySelect.value;
-    const durationMinutes = Number(elements.durationSelect.value);
-
-    const d = await request('/v1/rooms', {
+    setError('');
+    const title = ($('room-title') as HTMLInputElement).value.trim() || 'Audio runtime test';
+    const data = await requestJson('/v1/rooms', {
       method: 'POST',
-      body: JSON.stringify({ title, description, visibility, durationMinutes }),
+      body: JSON.stringify({
+        title,
+        description: 'Temporary runtime audio test',
+        visibility: 'LINK_ONLY',
+        durationMinutes: 60,
+      }),
     });
-
-    joinRoom(d.room.id);
+    const created = data.room ?? data;
+    roomIdInput.value = created.id;
+    log(`Room created id=${created.id} hostUserId=${created.hostUserId}`);
+    await joinRoom(created.id);
   } catch (e) {
-    setStatus((e as Error).message);
+    setError((e as Error).message);
   }
 }
 
 async function joinRoom(roomId: string) {
-  elements.roomSection.classList.remove('hidden');
-  elements.audioStreams.innerHTML = ''; // Clear prior streams
-
   try {
-    const ws = new WebSocket(
-      `${api.replace(/^http/, 'ws')}/v1/ws?access_token=${encodeURIComponent(token)}`
+    setError('');
+    await closeClient();
+
+    currentRoomId = roomId.trim();
+    if (!currentRoomId) throw new Error('Room ID is required.');
+
+    wsState.textContent = 'connecting';
+    roomState.textContent = 'joining';
+    mediaState.textContent = 'initializing';
+    roleState.textContent = '—';
+    producerState.textContent = '—';
+    consumerState.textContent = '0';
+    logEl.textContent = '';
+
+    const wsUrl =
+      `${api.replace(/^http/, 'ws')}/v1/ws` +
+      `?access_token=${encodeURIComponent(token)}` +
+      `&userId=${encodeURIComponent(user!.id)}`;
+
+    const ws = new WebSocket(wsUrl);
+
+    await new Promise<void>((resolve, reject) => {
+      const timer = window.setTimeout(() => reject(new Error('WebSocket open timeout')), 10000);
+      ws.addEventListener(
+        'open',
+        () => {
+          window.clearTimeout(timer);
+          resolve();
+        },
+        { once: true }
+      );
+      ws.addEventListener(
+        'error',
+        () => {
+          window.clearTimeout(timer);
+          reject(new Error('WebSocket connection failed'));
+        },
+        { once: true }
+      );
+      ws.addEventListener(
+        'close',
+        event => {
+          window.clearTimeout(timer);
+          reject(new Error(`WebSocket closed before open (${event.code}) ${event.reason}`));
+        },
+        { once: true }
+      );
+    });
+
+    wsState.textContent = 'connected';
+    log(`WebSocket connected userId=${user!.id}`);
+
+    client = new RuntimeAudioClient(
+      ws,
+      log,
+      (track, producerId) => attachRemoteAudio(track, producerId),
+      event => handleEvent(event)
     );
 
-    await new Promise<void>((ok, bad) => {
-      ws.onopen = () => ok();
-      ws.onerror = () => bad(new Error('WebSocket connection failed'));
-    });
+    const joined = await client.join(currentRoomId);
+    room.classList.remove('hidden');
+    roomState.textContent = 'joined';
+    mediaState.textContent = 'ready';
+    roleState.textContent = 'joined';
+    roomInfo.textContent =
+      `room=${joined.roomId} roomSession=${joined.roomSessionId} ` +
+      `participant=${joined.participantId} participantSession=${joined.participantSessionId}`;
 
-    client = new RoomAudioClient(ws, track => {
-      const a = document.createElement('audio');
-      a.autoplay = true;
-      a.srcObject = new MediaStream([track]);
-      elements.audioStreams.append(a);
-    });
+    const audioState = await client.getAudioState();
+    roleState.textContent = audioState.audioRole;
+    mic.disabled = !audioState.canTransmitAudio;
+    requestBtn.disabled = audioState.canTransmitAudio;
+    updateMediaState();
 
-    await client.join(roomId);
+    log(
+      `Media ready audioRole=${audioState.audioRole} canTransmitAudio=${audioState.canTransmitAudio}`
+    );
   } catch (e) {
-    setStatus((e as Error).message);
+    setError((e as Error).message);
+    log(`ERROR: ${(e as Error).message}`);
+    await closeClient();
   }
 }
 
-// Event Listeners Initialization
-function init() {
-  elements.logoutBtn.addEventListener('click', () => {
-    token = '';
-    localStorage.removeItem('asr.accessToken');
-    setStatus('');
-    syncView();
+function attachRemoteAudio(track: MediaStreamTrack, producerId: string) {
+  const audio = document.createElement('audio');
+  audio.autoplay = true;
+  audio.controls = true;
+  audio.playsInline = true;
+  audio.dataset.producerId = producerId;
+  audio.srcObject = new MediaStream([track]);
+  $('audio-output').appendChild(audio);
+  audio.play().catch(() => {
+    log('Remote audio play() was blocked; use the audio control once.');
   });
-
-  elements.loginBtn.addEventListener('click', () => sign('/v1/auth/login'));
-  elements.registerBtn.addEventListener('click', () => sign('/v1/auth/register'));
-  elements.refreshBtn.addEventListener('click', loadRooms);
-  elements.createBtn.addEventListener('click', createRoom);
-  elements.micBtn.addEventListener('click', () => client?.enableMicrophone());
-
-  syncView();
 }
 
-// Run setup
-init();
+let pendingSpeakerRequestId = '';
+
+function handleEvent(event: any) {
+  log(`← EVENT ${event.type} ${JSON.stringify(event.payload ?? {})}`);
+
+  if (event.type === 'speaker.request.created') {
+    pendingSpeakerRequestId = event.payload?.requestId ?? '';
+    if (pendingSpeakerRequestId) approveBtn.disabled = false;
+  }
+
+  if (event.type === 'participant.role.changed') {
+    void refreshAudioState();
+  }
+
+  if (event.type === 'media.audio.producer.created') {
+    updateMediaState();
+  }
+}
+
+async function refreshAudioState() {
+  if (!client) return;
+  try {
+    const state = await client.getAudioState();
+    roleState.textContent = state.audioRole;
+    mic.disabled = !state.canTransmitAudio;
+    requestBtn.disabled = state.canTransmitAudio;
+    log(`Audio state role=${state.audioRole} canTransmitAudio=${state.canTransmitAudio}`);
+  } catch (e) {
+    log(`Audio state refresh failed: ${(e as Error).message}`);
+  }
+}
+
+async function enableMic() {
+  try {
+    setError('');
+    if (!client) throw new Error('Join a room first.');
+    await client.enableMicrophone();
+    mic.disabled = true;
+    roleState.textContent = (await client.getAudioState()).audioRole;
+    updateMediaState();
+  } catch (e) {
+    setError((e as Error).message);
+    log(`MIC ERROR: ${(e as Error).message}`);
+  }
+}
+
+async function requestToSpeak() {
+  try {
+    setError('');
+    if (!client) throw new Error('Join a room first.');
+    await client.requestToSpeak();
+    requestBtn.disabled = true;
+  } catch (e) {
+    setError((e as Error).message);
+    log(`REQUEST ERROR: ${(e as Error).message}`);
+  }
+}
+
+async function approveRequest() {
+  try {
+    setError('');
+    if (!client) throw new Error('Join a room first.');
+    if (!pendingSpeakerRequestId) throw new Error('No pending speaker request.');
+    await client.approveRequest(pendingSpeakerRequestId);
+    pendingSpeakerRequestId = '';
+    approveBtn.disabled = true;
+  } catch (e) {
+    setError((e as Error).message);
+    log(`APPROVE ERROR: ${(e as Error).message}`);
+  }
+}
+
+async function leaveRoom() {
+  try {
+    if (client) await client.leave();
+  } catch (e) {
+    log(`LEAVE ERROR: ${(e as Error).message}`);
+  } finally {
+    await closeClient();
+    room.classList.add('hidden');
+    currentRoomId = '';
+  }
+}
+
+async function closeClient() {
+  if (!client) return;
+  client.close();
+  client = undefined;
+}
+
+$('register').addEventListener('click', register);
+$('login').addEventListener('click', login);
+$('create-room').addEventListener('click', createRoom);
+$('join-room').addEventListener('click', () => joinRoom(roomIdInput.value));
+$('mic').addEventListener('click', enableMic);
+$('request').addEventListener('click', requestToSpeak);
+$('approve').addEventListener('click', approveRequest);
+$('leave').addEventListener('click', leaveRoom);
+
+$('logout').addEventListener('click', async () => {
+  await closeClient();
+  token = '';
+  user = null;
+  localStorage.removeItem('asr.accessToken');
+  localStorage.removeItem('asr.user');
+  room.classList.add('hidden');
+  renderAuth();
+});
+
+renderAuth();
