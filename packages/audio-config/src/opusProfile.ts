@@ -6,7 +6,7 @@ export const OPUS_MEDIA_CODEC_CONFIG = {
   kind: 'audio',
   mimeType: 'audio/opus',
   clockRate: 48000,
-  channels: 1, // Mono voice
+  channels: 2,
   parameters: {
     minptime: OPUS_PTIME,
     ptime: OPUS_PTIME,
