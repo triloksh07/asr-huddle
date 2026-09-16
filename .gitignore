@@ -46,3 +46,8 @@ next-env.d.ts
 *temp*
 .turbo
 .next
+
+# Drizzle runtime artifacts
+packages/db/drizzle/meta/
+packages/db/drizzle/*.snapshot.json
+packages/db/drizzle/*_outgoing_*.sql
