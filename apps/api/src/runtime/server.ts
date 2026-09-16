@@ -1,4 +1,5 @@
 import http from 'node:http';
+import cors from 'cors';
 import express from 'express';
 import { WebSocketServer } from 'ws';
 import type { ApiRuntime } from './composition-root.js';
@@ -39,6 +40,7 @@ async function enforceHttpRateLimit(
 
 export async function startServer(runtime: ApiRuntime): Promise<RunningServer> {
   const app = express();
+  app.use(cors()); // only for development test, must be replaced with better config in production
   app.disable('x-powered-by');
   app.use(express.json());
 
