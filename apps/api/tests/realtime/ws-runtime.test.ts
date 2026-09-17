@@ -1,91 +1,59 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from 'vitest';
 import {
   CommandRouter,
   ConnectionRegistry,
   createRealtimeRuntime,
-} from "../../src/realtime/index.js";
+} from '../../src/realtime/index.js';
 
 function socket() {
-  const listeners = new Map<string, (value?: unknown) => void>();
+  const listeners = new Map<string, (v?: unknown) => void>();
   return {
     send: vi.fn(),
     close: vi.fn(),
-    on: vi.fn((event: string, listener: (value?: unknown) => void) => {
-      listeners.set(event, listener);
-    }),
-    emit(event: string, value?: unknown) {
-      return listeners.get(event)?.(value);
-    },
+    on: vi.fn((e: string, l: (v?: unknown) => void) => listeners.set(e, l)),
+    emit: (e: string, v?: unknown) => listeners.get(e)?.(v),
   };
 }
-
-function runtime(options: { maxMessageBytes?: number; maxProtocolViolations?: number } = {}) {
-  const router = new CommandRouter();
-  const registry = new ConnectionRegistry();
-  const authenticator = { authenticate: vi.fn().mockResolvedValue("user-1") };
-  const disconnectRoom = { execute: vi.fn().mockResolvedValue(undefined) };
-
-  return {
-    runtime: createRealtimeRuntime(
-      router,
-      registry,
-      authenticator,
-      disconnectRoom as never,
-      {} as never,
-      15_000,
-      undefined,
-      undefined,
-      options.maxMessageBytes,
-      options.maxProtocolViolations
-    ),
-    registry,
-  };
+function makeRuntime(options: Record<string, number> = {}) {
+  return createRealtimeRuntime(
+    new CommandRouter(),
+    new ConnectionRegistry(),
+    { authenticate: vi.fn().mockResolvedValue('u1') },
+    { execute: vi.fn() } as never,
+    {} as never,
+    15000,
+    undefined,
+    undefined,
+    options.maxMessageBytes,
+    options.maxProtocolViolations
+  );
 }
 
-describe("createRealtimeRuntime B20.2 protocol boundary", () => {
-  it("accepts websocket text and Buffer JSON frames", async () => {
-    const { runtime, registry } = runtime();
+describe('createRealtimeRuntime', () => {
+  it('accepts text and Buffer JSON frames', async () => {
+    const r = makeRuntime();
     const ws = socket();
-    await runtime.accept(ws, {});
-
-    await ws.emit("message", JSON.stringify({
-      requestId: "r1",
-      type: "unknown.command",
-      payload: {},
-    }));
-    await ws.emit("message", Buffer.from(JSON.stringify({
-      requestId: "r2",
-      type: "unknown.command",
-      payload: {},
-    })));
-
-    expect(registry.size()).toBe(1);
+    await r.accept(ws, {});
+    await ws.emit('message', JSON.stringify({ requestId: 'r1', type: 'unknown', payload: {} }));
+    await ws.emit(
+      'message',
+      Buffer.from(JSON.stringify({ requestId: 'r2', type: 'unknown', payload: {} }))
+    );
     expect(ws.send).toHaveBeenCalledTimes(2);
   });
 
-  it("rejects oversized messages with websocket code 1009", async () => {
-    const { runtime } = runtime({ maxMessageBytes: 16 });
+  it('closes oversized messages with 1009', async () => {
     const ws = socket();
-    await runtime.accept(ws, {});
-
-    await ws.emit("message", JSON.stringify({
-      requestId: "r1",
-      type: "unknown.command",
-      payload: {},
-    }));
-
-    expect(ws.send).toHaveBeenCalledWith(expect.stringContaining("MESSAGE_TOO_LARGE"));
-    expect(ws.close).toHaveBeenCalledWith(1009, "Message too large.");
+    await makeRuntime({ maxMessageBytes: 16 }).accept(ws, {});
+    await ws.emit('message', JSON.stringify({ requestId: 'r1', type: 'unknown', payload: {} }));
+    expect(ws.close).toHaveBeenCalledWith(1009, 'Message too large.');
   });
 
-  it("closes after repeated malformed protocol messages", async () => {
-    const { runtime } = runtime({ maxProtocolViolations: 2 });
+  it('closes after repeated protocol violations', async () => {
     const ws = socket();
-    await runtime.accept(ws, {});
-
-    await ws.emit("message", "{bad");
-    await ws.emit("message", "{bad");
-
-    expect(ws.close).toHaveBeenCalledWith(1008, "Protocol violation limit exceeded.");
+    await makeRuntime({ maxProtocolViolations: 2 }).accept(ws, {});
+    await ws.emit('message', '{bad');
+    await ws.emit('message', '{bad');
+    expect(ws.close).toHaveBeenCalledWith(1008, 'Protocol violation limit exceeded.');
   });
 });

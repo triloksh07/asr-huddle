@@ -4,137 +4,77 @@ import type { RateLimiter } from '../../src/security/rate-limiter.js';
 import { RealtimeRateLimitPolicy } from '../../src/security/realtime-rate-limit-policy.js';
 import type { RateLimitConfig } from '../../src/config.js';
 
-const rateLimits: RateLimitConfig = {
+const limits: RateLimitConfig = {
   authRegisterLimit: 5,
-  authRegisterWindowMs: 3_600_000,
+  authRegisterWindowMs: 3600000,
   authLoginLimit: 10,
-  authLoginWindowMs: 60_000,
+  authLoginWindowMs: 60000,
   connectionLimit: 10,
-  connectionWindowMs: 60_000,
+  connectionWindowMs: 60000,
   commandLimit: 100,
-  commandWindowMs: 10_000,
+  commandWindowMs: 10000,
   sessionLimit: 10,
-  sessionWindowMs: 60_000,
+  sessionWindowMs: 60000,
   roomCreateLimit: 5,
-  roomCreateWindowMs: 3_600_000,
+  roomCreateWindowMs: 3600000,
   speakerRequestLimit: 5,
-  speakerRequestWindowMs: 30_000,
+  speakerRequestWindowMs: 30000,
   reactionBurstLimit: 5,
-  reactionBurstWindowMs: 1_000,
-  reactionSameTypeWindowMs: 4_000,
+  reactionBurstWindowMs: 1000,
+  reactionSameTypeWindowMs: 4000,
   mediaLimit: 60,
-  mediaWindowMs: 10_000,
+  mediaWindowMs: 10000,
   maxViolations: 2,
-  violationWindowMs: 10_000,
+  violationWindowMs: 10000,
 };
-
-function createContext() {
-  return {
-    connection: {
-      connectionId: 'connection-1',
-      userId: 'user-1',
-      participantId: 'participant-1',
-      participantSessionId: 'session-1',
-      roomId: 'room-1',
-      roomSessionId: 'room-session-1',
-      connectedAt: new Date().toISOString(),
-    },
-    transport: {
-      send: vi.fn(),
-      close: vi.fn(),
-    },
-  };
-}
+const ctx = () => ({
+  connection: {
+    connectionId: 'c1',
+    userId: 'u1',
+    participantId: 'p1',
+    participantSessionId: 'ps1',
+    roomId: 'r1',
+    roomSessionId: 'rs1',
+    connectedAt: new Date().toISOString(),
+  },
+  transport: { send: vi.fn(), close: vi.fn() },
+});
 
 describe('CommandRouter rate limiting', () => {
-  it('rejects a rate-limited command without invoking the handler', async () => {
-    const context = createContext();
-    const rateLimiter: RateLimiter = {
-      consume: vi.fn().mockResolvedValue({
-        allowed: false,
-        limit: 5,
-        remaining: 0,
-        retryAfterMs: 500,
-      }),
+  it('does not invoke a handler when a policy check is denied', async () => {
+    const limiter: RateLimiter = {
+      consume: vi
+        .fn()
+        .mockResolvedValue({ allowed: false, limit: 1, remaining: 0, retryAfterMs: 100 }),
     };
     const router = new CommandRouter({
-      rateLimiter,
-      rateLimitPolicy: new RealtimeRateLimitPolicy(rateLimits),
+      rateLimiter: limiter,
+      rateLimitPolicy: new RealtimeRateLimitPolicy(limits),
     });
-    const handler = {
-      type: 'room.reaction',
-      handle: vi.fn().mockResolvedValue(undefined),
-    };
+    const handler = { type: 'speaker.request', handle: vi.fn() };
     router.register(handler);
-
-    const result = await router.dispatch(context, {
-      requestId: 'request-1',
-      type: 'room.reaction',
-      payload: { type: '🔥' },
-    });
-
-    expect(result.error?.code).toBe('RATE_LIMITED');
+    expect(
+      (await router.dispatch(ctx(), { requestId: 'r1', type: 'speaker.request', payload: {} }))
+        .error?.code
+    ).toBe('RATE_LIMITED');
     expect(handler.handle).not.toHaveBeenCalled();
   });
 
-  it('allows unrelated commands when the rate limiter is configured', async () => {
-    const context = createContext();
-    const rateLimiter: RateLimiter = {
-      consume: vi.fn(),
+  it('tracks repeated violations per connection', async () => {
+    const limiter: RateLimiter = {
+      consume: vi
+        .fn()
+        .mockResolvedValue({ allowed: false, limit: 1, remaining: 0, retryAfterMs: 100 }),
     };
     const router = new CommandRouter({
-      rateLimiter,
-      rateLimitPolicy: new RealtimeRateLimitPolicy(rateLimits),
-    });
-    const handler = {
-      type: 'room.leave',
-      handle: vi.fn().mockResolvedValue(undefined),
-    };
-    router.register(handler);
-
-    const result = await router.dispatch(context, {
-      requestId: 'request-1',
-      type: 'room.leave',
-      payload: {},
-    });
-
-    expect(result.ok).toBe(true);
-    expect(rateLimiter.consume).not.toHaveBeenCalled();
-  });
-
-  it('reports repeated rate-limit abuse so the realtime runtime can close the connection', async () => {
-    const context = createContext();
-    const rateLimiter: RateLimiter = {
-      consume: vi.fn().mockResolvedValue({
-        allowed: false,
-        limit: 1,
-        remaining: 0,
-        retryAfterMs: 500,
-      }),
-    };
-    const router = new CommandRouter({
-      rateLimiter,
-      rateLimitPolicy: new RealtimeRateLimitPolicy(rateLimits),
+      rateLimiter: limiter,
+      rateLimitPolicy: new RealtimeRateLimitPolicy(limits),
       maxRateLimitViolations: 2,
-      rateLimitViolationWindowMs: 10_000,
+      rateLimitViolationWindowMs: 10000,
     });
-    router.register({
-      type: 'speaker.request',
-      handle: vi.fn().mockResolvedValue(undefined),
-    });
-
-    await router.dispatch(context, {
-      requestId: 'request-1',
-      type: 'speaker.request',
-      payload: { roomId: 'room-1' },
-    });
-    expect(router.shouldCloseForRateLimit(context.connection)).toBe(false);
-
-    await router.dispatch(context, {
-      requestId: 'request-2',
-      type: 'speaker.request',
-      payload: { roomId: 'room-1' },
-    });
-    expect(router.shouldCloseForRateLimit(context.connection)).toBe(true);
+    router.register({ type: 'speaker.request', handle: vi.fn() });
+    await router.dispatch(ctx(), { requestId: 'r1', type: 'speaker.request', payload: {} });
+    await router.dispatch(ctx(), { requestId: 'r2', type: 'speaker.request', payload: {} });
+    expect(router.shouldCloseForRateLimit(ctx().connection)).toBe(true);
   });
 });

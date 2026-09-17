@@ -7,52 +7,39 @@ import {
 import type { RateLimiter } from '../../src/security/rate-limiter.js';
 
 function socket() {
-  const listeners = new Map<string, (value?: unknown) => void>();
+  const listeners = new Map<string, (v?: unknown) => void>();
   return {
     send: vi.fn(),
     close: vi.fn(),
-    on: vi.fn((event: string, listener: (value?: unknown) => void) => {
-      listeners.set(event, listener);
-    }),
-    emit(event: string, value?: unknown) {
-      return listeners.get(event)?.(value);
-    },
+    on: vi.fn((e: string, l: (v?: unknown) => void) => listeners.set(e, l)),
+    emit: (e: string, v?: unknown) => listeners.get(e)?.(v),
   };
 }
-
-describe('createRealtimeRuntime rate limiting', () => {
-  it('rejects connection attempts when the distributed connection limit is exhausted', async () => {
-    const rateLimiter: RateLimiter = {
-      consume: vi.fn().mockResolvedValue({
-        allowed: false,
-        limit: 10,
-        remaining: 0,
-        retryAfterMs: 10_000,
-      }),
+describe('realtime connection rate limiting', () => {
+  it('rejects exhausted connection capacity before authentication', async () => {
+    const limiter: RateLimiter = {
+      consume: vi
+        .fn()
+        .mockResolvedValue({ allowed: false, limit: 10, remaining: 0, retryAfterMs: 10000 }),
     };
-    const router = new CommandRouter();
-    const registry = new ConnectionRegistry();
-    const authenticator = { authenticate: vi.fn() };
-    const disconnectRoom = { execute: vi.fn() };
-    const runtime = createRealtimeRuntime(
-      router,
-      registry,
-      authenticator,
-      disconnectRoom as never,
+    const auth = { authenticate: vi.fn() };
+    const r = createRealtimeRuntime(
+      new CommandRouter(),
+      new ConnectionRegistry(),
+      auth,
+      { execute: vi.fn() } as never,
       {} as never,
-      15_000,
+      15000,
       undefined,
       undefined,
       undefined,
       undefined,
-      rateLimiter,
-      { limit: 10, windowMs: 60_000 }
+      limiter,
+      { limit: 10, windowMs: 60000 }
     );
     const ws = socket();
-
-    await runtime.accept(ws, {});
-
+    await r.accept(ws, {});
     expect(ws.close).toHaveBeenCalledWith(1008, 'Connection rate limit exceeded.');
-    expect(authenticator.authenticate).not.toHaveBeenCalled();
+    expect(auth.authenticate).not.toHaveBeenCalled();
   });
 });

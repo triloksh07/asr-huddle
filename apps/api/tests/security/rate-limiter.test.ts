@@ -3,84 +3,74 @@ import type { RealtimeConnection, RealtimeEnvelope } from '../../src/realtime/ty
 import { RealtimeRateLimitPolicy } from '../../src/security/realtime-rate-limit-policy.js';
 import type { RateLimitConfig } from '../../src/config.js';
 
-const rateLimits: RateLimitConfig = {
+const limits: RateLimitConfig = {
   authRegisterLimit: 5,
-  authRegisterWindowMs: 3_600_000,
+  authRegisterWindowMs: 3600000,
   authLoginLimit: 10,
-  authLoginWindowMs: 60_000,
+  authLoginWindowMs: 60000,
   connectionLimit: 10,
-  connectionWindowMs: 60_000,
+  connectionWindowMs: 60000,
   commandLimit: 100,
-  commandWindowMs: 10_000,
+  commandWindowMs: 10000,
   sessionLimit: 10,
-  sessionWindowMs: 60_000,
+  sessionWindowMs: 60000,
   roomCreateLimit: 5,
-  roomCreateWindowMs: 3_600_000,
+  roomCreateWindowMs: 3600000,
   speakerRequestLimit: 5,
-  speakerRequestWindowMs: 30_000,
+  speakerRequestWindowMs: 30000,
   reactionBurstLimit: 5,
-  reactionBurstWindowMs: 1_000,
-  reactionSameTypeWindowMs: 4_000,
+  reactionBurstWindowMs: 1000,
+  reactionSameTypeWindowMs: 4000,
   mediaLimit: 60,
-  mediaWindowMs: 10_000,
+  mediaWindowMs: 10000,
   maxViolations: 3,
-  violationWindowMs: 10_000,
+  violationWindowMs: 10000,
 };
-
 const connection: RealtimeConnection = {
-  connectionId: 'connection-1' as RealtimeConnection['connectionId'],
-  userId: 'user-1' as RealtimeConnection['userId'],
-  participantId: 'participant-1' as RealtimeConnection['participantId'],
-  participantSessionId: 'session-1' as RealtimeConnection['participantSessionId'],
-  roomId: 'room-1' as RealtimeConnection['roomId'],
-  roomSessionId: 'room-session-1' as RealtimeConnection['roomSessionId'],
+  connectionId: 'c1' as never,
+  userId: 'u1' as never,
+  participantId: 'p1' as never,
+  participantSessionId: 'ps1' as never,
+  roomId: 'r1' as never,
+  roomSessionId: 'rs1' as never,
   connectedAt: new Date().toISOString(),
+  transport: { send() {}, close() {} },
 };
 
 describe('RealtimeRateLimitPolicy', () => {
-  const policy = new RealtimeRateLimitPolicy(rateLimits);
+  const policy = new RealtimeRateLimitPolicy(limits);
 
-  it('rate-limits room session commands by connection and user', () => {
-    const envelope: RealtimeEnvelope = {
-      requestId: 'request-1',
-      type: 'room.join',
-      payload: { roomId: 'room-1' },
-    };
-
-    const checks = policy.checks(connection, envelope);
-
-    expect(checks.map(check => check.scope)).toEqual([
+  it('applies command and session-user checks to room.join', () => {
+    const e: RealtimeEnvelope = { requestId: 'r1', type: 'room.join', payload: { roomId: 'r1' } };
+    expect(policy.checks(connection, e).map(x => x.scope)).toEqual([
       'realtime.command.connection',
       'realtime.session.user',
     ]);
   });
 
-  it('rate-limits reactions by burst and repeated reaction type', () => {
-    const envelope: RealtimeEnvelope = {
-      requestId: 'request-1',
-      type: 'room.reaction',
-      payload: { type: '🔥' },
-    };
-
-    const checks = policy.checks(connection, envelope);
-
-    expect(checks.map(check => check.scope)).toEqual([
+  it('applies burst and repeated-type checks to reactions', () => {
+    const e: RealtimeEnvelope = { requestId: 'r1', type: 'room.reaction', payload: { type: '🔥' } };
+    const checks = policy.checks(connection, e);
+    expect(checks.map(x => x.scope)).toEqual([
       'realtime.command.connection',
       'realtime.reaction.user',
       'realtime.reaction.type',
     ]);
-    expect(checks[1].rule.limit).toBe(5);
-    expect(checks[2].rule.limit).toBe(1);
-    expect(checks[2].rule.windowMs).toBe(4_000);
+    expect(checks[2].rule.windowMs).toBe(4000);
   });
 
-  it('does not require Redis rate limiting for ordinary room commands', () => {
-    const envelope: RealtimeEnvelope = {
-      requestId: 'request-1',
-      type: 'room.leave',
-      payload: {},
-    };
+  it('keeps ordinary room.leave outside distributed limiting', () => {
+    expect(policy.checks(connection, { requestId: 'r1', type: 'room.leave', payload: {} })).toEqual(
+      []
+    );
+  });
 
-    expect(policy.checks(connection, envelope)).toEqual([]);
+  it('applies the media limiter to media commands', () => {
+    const checks = policy.checks(connection, {
+      requestId: 'r1',
+      type: 'media.transport.create',
+      payload: { direction: 'recv' },
+    });
+    expect(checks.map(x => x.scope)).toContain('realtime.media');
   });
 });

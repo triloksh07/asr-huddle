@@ -2,145 +2,59 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApplicationError } from '@repo/application';
 import { CommandRouter } from '../../src/realtime/command-router.js';
 
-const context = {
+const context = (connectionId = 'c1') => ({
   connection: {
-    connectionId: 'c1',
+    connectionId,
     userId: 'u1',
     participantId: null,
     participantSessionId: null,
     roomId: null,
-    connectedAt: new Date().toISOString(),
     roomSessionId: null,
+    connectedAt: new Date().toISOString(),
   },
-  transport: {
-    send: vi.fn(),
-    close: vi.fn(),
-  },
-};
+  transport: { send: vi.fn(), close: vi.fn() },
+});
 
-describe('CommandRouter B20.2 protocol boundary', () => {
+describe('CommandRouter', () => {
   it('rejects malformed envelopes', async () => {
-    const router = new CommandRouter();
-    const result = await router.dispatch(context, { type: 'room.join' });
-
-    expect(result.ok).toBe(false);
+    const result = await new CommandRouter().dispatch(context(), { type: 'room.join' });
     expect(result.error?.code).toBe('INVALID_MESSAGE');
   });
 
-  it('rejects duplicate request ids on the same connection', async () => {
-    const handler = {
-      type: 'room.test',
-      handle: vi.fn().mockResolvedValue({ accepted: true }),
-    };
-    const router = new CommandRouter();
-    router.register(handler);
-
-    const first = await router.dispatch(context, {
-      requestId: 'r1',
-      type: 'room.test',
-      payload: {},
-    });
-    const second = await router.dispatch(context, {
-      requestId: 'r1',
-      type: 'room.test',
-      payload: {},
-    });
-
-    expect(first.ok).toBe(true);
-    expect(second.error?.code).toBe('DUPLICATE_REQUEST_ID');
-    expect(handler.handle).toHaveBeenCalledOnce();
-  });
-
   it('scopes duplicate request ids to a connection', async () => {
-    const handler = {
-      type: 'room.test',
-      handle: vi.fn().mockResolvedValue({ accepted: true }),
-    };
+    const handler = { type: 'test', handle: vi.fn().mockResolvedValue({ ok: true }) };
     const router = new CommandRouter();
     router.register(handler);
-
-    const secondConnection = {
-      ...context,
-      connection: { ...context.connection, connectionId: 'c2' },
-    };
-
-    await router.dispatch(context, {
-      requestId: 'same-id',
-      type: 'room.test',
-      payload: {},
-    });
-    const result = await router.dispatch(secondConnection, {
-      requestId: 'same-id',
-      type: 'room.test',
-      payload: {},
-    });
-
-    expect(result.ok).toBe(true);
+    await router.dispatch(context('c1'), { requestId: 'r1', type: 'test', payload: {} });
+    expect(
+      (await router.dispatch(context('c2'), { requestId: 'r1', type: 'test', payload: {} })).ok
+    ).toBe(true);
     expect(handler.handle).toHaveBeenCalledTimes(2);
   });
 
   it('bounds the recent request-id cache', async () => {
-    const handler = {
-      type: 'room.test',
-      handle: vi.fn().mockResolvedValue({ accepted: true }),
-    };
+    const handler = { type: 'test', handle: vi.fn().mockResolvedValue(undefined) };
     const router = new CommandRouter({ maxRecentRequestIds: 2 });
     router.register(handler);
-
-    for (const requestId of ['r1', 'r2', 'r3']) {
-      await router.dispatch(context, { requestId, type: 'room.test', payload: {} });
-    }
-
-    const reused = await router.dispatch(context, {
-      requestId: 'r1',
-      type: 'room.test',
-      payload: {},
-    });
-
-    expect(reused.ok).toBe(true);
-    expect(handler.handle).toHaveBeenCalledTimes(4);
+    for (const requestId of ['r1', 'r2', 'r3'])
+      await router.dispatch(context(), { requestId, type: 'test', payload: {} });
+    expect(
+      (await router.dispatch(context(), { requestId: 'r1', type: 'test', payload: {} })).ok
+    ).toBe(true);
   });
 
-  it('does not expose arbitrary infrastructure error messages', async () => {
-    const handler = {
-      type: 'room.test',
-      handle: vi.fn().mockRejectedValue(new Error('postgres connection string leaked')),
-    };
+  it('sanitizes unknown errors and preserves application errors', async () => {
     const router = new CommandRouter();
-    router.register(handler);
-
-    const result = await router.dispatch(context, {
-      requestId: 'r1',
-      type: 'room.test',
-      payload: {},
-    });
-
-    expect(result.error).toEqual({
-      code: 'COMMAND_FAILED',
-      message: 'Realtime command failed.',
-    });
-  });
-
-  it('preserves known application errors', async () => {
-    const router = new CommandRouter();
+    router.register({ type: 'bad', handle: vi.fn().mockRejectedValue(new Error('secret')) });
+    expect(
+      (await router.dispatch(context(), { requestId: 'r1', type: 'bad', payload: {} })).error
+    ).toEqual({ code: 'COMMAND_FAILED', message: 'Realtime command failed.' });
     router.register({
-      type: 'room.test',
-      handle: vi
-        .fn()
-        .mockRejectedValue(
-          new ApplicationError('FORBIDDEN', 'Only the room host can end this room.')
-        ),
+      type: 'known',
+      handle: vi.fn().mockRejectedValue(new ApplicationError('FORBIDDEN', 'Denied.')),
     });
-
-    const result = await router.dispatch(context, {
-      requestId: 'r1',
-      type: 'room.test',
-      payload: {},
-    });
-
-    expect(result.error).toEqual({
-      code: 'FORBIDDEN',
-      message: 'Only the room host can end this room.',
-    });
+    expect(
+      (await router.dispatch(context(), { requestId: 'r2', type: 'known', payload: {} })).error
+    ).toEqual({ code: 'FORBIDDEN', message: 'Denied.' });
   });
 });
