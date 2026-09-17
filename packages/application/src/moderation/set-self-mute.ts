@@ -13,6 +13,7 @@ export interface SelfMuteMediaControl {
     roomSessionId: string;
     participantId: string;
     participantSessionId: string;
+    connectionId: string;
   }): Promise<void>;
 }
 
@@ -35,14 +36,14 @@ export class SetSelfMute {
         participant.id
       );
       if (activeSession) {
-        // Fail safe: revoke the live media capability before committing the durable mute state.
-        // If the SFU is unavailable, the participant remains unchanged rather than leaving a
-        // muted participant with a live producer.
+        // Revoke the live producer using the exact session/connection identity that owns it.
+        // The durable mute state is committed only after the media boundary accepts the revoke.
         await this.media.revokeAudioProduction({
           roomId: participant.roomId,
           roomSessionId: participant.roomSessionId,
           participantId: participant.id,
           participantSessionId: activeSession.id,
+          connectionId: activeSession.connectionId,
         });
       }
     }
