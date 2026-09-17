@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@repo/media-contract": "workspace:*",
-    "mediasoup-client": "^3.17.7"
+    "mediasoup-client": "^3.23.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
