@@ -54,7 +54,7 @@ describe("participant domain", () => {
       joinedAt: new Date(),
     });
 
-    expect(() => demoteToListener(host)).toThrow("management participant");
+    expect(() => demoteToListener(host)).toThrow("A host or co-host cannot be demoted to listener.");
   });
 
   it("allows a listener to become a speaker", () => {
