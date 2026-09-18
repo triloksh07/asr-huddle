@@ -4,6 +4,8 @@ import {
   createHostParticipant,
   createParticipant,
   createParticipantSession,
+  markRecoveryExpired,
+  markSessionRecoveryExpired,
   type ConnectionId,
 } from '@repo/domain';
 import { ApplicationError } from '../errors.js';
@@ -14,7 +16,6 @@ export interface JoinRoomCommand {
   readonly userId: string;
   readonly connectionId: ConnectionId;
 }
-
 export interface JoinRoomResult {
   readonly roomId: string;
   readonly roomSessionId: string;
@@ -38,10 +39,8 @@ export class JoinRoom {
         const user = await users.findById(command.userId);
         if (!user)
           throw new ApplicationError('UNAUTHENTICATED', 'Authenticated user was not found.');
-
         const room = await rooms.findById(command.roomId);
         if (!room) throw new ApplicationError('NOT_FOUND', 'Room was not found.');
-
         const session = await roomSessions.findActiveByRoomId(command.roomId);
         if (!session) throw new ApplicationError('ROOM_ENDED', 'The room is not active.');
         assertRoomSessionActive(session);
@@ -56,7 +55,6 @@ export class JoinRoom {
               'CONFLICT',
               'This user already has an active session in the room.'
             );
-
           throw new ApplicationError(
             'CONFLICT',
             'This user has an inconsistent active participation state.'
@@ -64,30 +62,59 @@ export class JoinRoom {
         }
 
         if (existingUser?.status === 'DISCONNECTED') {
-          throw new ApplicationError(
-            'CONFLICT',
-            'This user has a recoverable room session. Use room.reconnect instead of room.join.'
+          const userSessions = await participantSessions.findByParticipantId(existingUser.id);
+          const disconnectedSession = userSessions.find(
+            s => s.disconnectedAt !== null && !s.intentionalLeave
           );
+          if (!disconnectedSession)
+            throw new ApplicationError(
+              'CONFLICT',
+              'This user has an inconsistent disconnected room session.'
+            );
+          const now = this.clock.now();
+          if (
+            disconnectedSession.connectionId !== null &&
+            disconnectedSession.recoverableUntil !== null &&
+            now.getTime() < disconnectedSession.recoverableUntil.getTime()
+          ) {
+            throw new ApplicationError(
+              'CONFLICT',
+              'This user has a recoverable room session. Use room.reconnect instead of room.join.'
+            );
+          }
+          if (
+            disconnectedSession.connectionId === null ||
+            disconnectedSession.recoverableUntil === null ||
+            now.getTime() < disconnectedSession.recoverableUntil.getTime()
+          ) {
+            throw new ApplicationError(
+              'CONFLICT',
+              'This user has an inconsistent expired room session.'
+            );
+          }
+          // The recovery window is definitively over. Retire both durable records before
+          // creating the fresh participation so a previous participation role cannot block the new participation.
+          await participants.save(markRecoveryExpired(existingUser, now));
+          await participantSessions.save(markSessionRecoveryExpired(disconnectedSession));
         }
 
         const connectedParticipation = await participants.findConnectedByUserId(user.id);
-        if (connectedParticipation) {
+        if (connectedParticipation)
           throw new ApplicationError(
             'CONFLICT',
             'This user already has an active room participation.'
           );
-        }
 
         const listenerCount = existing.filter(
-          p => p.status === 'CONNECTED' && p.audioRole === 'LISTENER'
+          p => p.id !== existingUser?.id && p.status === 'CONNECTED' && p.audioRole === 'LISTENER'
         ).length;
         const speakerCount = existing.filter(
-          p => p.status === 'CONNECTED' && p.audioRole === 'SPEAKER'
+          p => p.id !== existingUser?.id && p.status === 'CONNECTED' && p.audioRole === 'SPEAKER'
         ).length;
         const coHostCount = existing.filter(
-          p => p.status === 'CONNECTED' && p.managementRole === 'CO_HOST'
+          p =>
+            p.id !== existingUser?.id && p.status === 'CONNECTED' && p.managementRole === 'CO_HOST'
         ).length;
-
         assertCanAddListener({
           listeners: listenerCount,
           speakers: speakerCount,
@@ -95,9 +122,9 @@ export class JoinRoom {
         });
 
         const now = this.clock.now();
-        const isHostParticipation = room.hostUserId === user.id;
+        const isHost = room.hostUserId === user.id;
 
-        const participant = isHostParticipation
+        const participant = isHost
           ? createHostParticipant({
               id: this.ids.next() as ReturnType<typeof createHostParticipant>['id'],
               roomId: room.id,
@@ -112,17 +139,14 @@ export class JoinRoom {
               userId: user.id as ReturnType<typeof createParticipant>['userId'],
               joinedAt: now,
             });
-
         const participantSession = createParticipantSession({
           id: this.ids.next() as ReturnType<typeof createParticipantSession>['id'],
           participantId: participant.id,
           connectionId: command.connectionId,
           connectedAt: now,
         });
-
         await participants.save(participant);
         await participantSessions.save(participantSession);
-
         return {
           roomId: participant.roomId,
           roomSessionId: participant.roomSessionId,
@@ -133,7 +157,6 @@ export class JoinRoom {
         };
       }
     );
-
     await this.events.publish({
       type: 'participant.joined',
       occurredAt: this.clock.now(),
@@ -144,7 +167,6 @@ export class JoinRoom {
       userId: command.userId,
       payload: result,
     });
-
     return result;
   }
 }

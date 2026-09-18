@@ -7,14 +7,12 @@ import { mapParticipantSession } from '../mappers.js';
 
 export class PostgresParticipantSessionRepository implements ParticipantSessionRepository {
   constructor(private readonly database: Database['db']) {}
-
   async findById(sessionId: string) {
     const row = await this.database.query.participantSessions.findFirst({
       where: eq(participantSessions.id, sessionId),
     });
     return row ? mapParticipantSession(row) : null;
   }
-
   async findActiveByParticipantId(participantId: string) {
     const row = await this.database.query.participantSessions.findFirst({
       where: and(
@@ -24,14 +22,12 @@ export class PostgresParticipantSessionRepository implements ParticipantSessionR
     });
     return row ? mapParticipantSession(row) : null;
   }
-
   async findByParticipantId(participantId: string) {
     const rows = await this.database.query.participantSessions.findMany({
       where: eq(participantSessions.participantId, participantId),
     });
     return rows.map(mapParticipantSession);
   }
-
   async claimReconnect(
     sessionId: string,
     expectedConnectionId: string,
@@ -59,15 +55,15 @@ export class PostgresParticipantSessionRepository implements ParticipantSessionR
       .returning();
     return rows[0] ? mapParticipantSession(rows[0]) : null;
   }
-
   async save(session: ParticipantSessionState): Promise<void> {
     const status =
       session.disconnectedAt === null
         ? 'ACTIVE'
-        : session.intentionalLeave
+        : session.connectionId === null
           ? 'CLOSED'
-          : 'DISCONNECTED';
-
+          : session.intentionalLeave
+            ? 'CLOSED'
+            : 'DISCONNECTED';
     await this.database
       .insert(participantSessions)
       .values({
@@ -79,7 +75,7 @@ export class PostgresParticipantSessionRepository implements ParticipantSessionR
         disconnectedAt: session.disconnectedAt,
         intentionalLeave: session.intentionalLeave ? 1 : 0,
         recoverableUntil: session.recoverableUntil,
-        closedAt: session.intentionalLeave ? session.disconnectedAt : null,
+        closedAt: status === 'CLOSED' ? (session.disconnectedAt ?? new Date()) : null,
       })
       .onConflictDoUpdate({
         target: participantSessions.id,
@@ -90,7 +86,7 @@ export class PostgresParticipantSessionRepository implements ParticipantSessionR
           disconnectedAt: session.disconnectedAt,
           intentionalLeave: session.intentionalLeave ? 1 : 0,
           recoverableUntil: session.recoverableUntil,
-          closedAt: session.intentionalLeave ? session.disconnectedAt : null,
+          closedAt: status === 'CLOSED' ? (session.disconnectedAt ?? new Date()) : null,
         },
       });
   }

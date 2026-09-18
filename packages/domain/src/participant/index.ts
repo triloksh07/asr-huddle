@@ -31,12 +31,6 @@ export type ParticipantState = Readonly<{
 export type ParticipantSessionState = Readonly<{
   id: ParticipantSessionId;
   participantId: ParticipantId;
-  /**
-   * A temporary disconnect retains the previous connection id so reconnect
-   * can use it as the optimistic compare-and-claim token.
-   *
-   * An intentional leave releases the transport binding by setting this to null.
-   */
   connectionId: ConnectionId | null;
   connectedAt: Date;
   disconnectedAt: Date | null;
@@ -51,11 +45,7 @@ export function createHostParticipant(input: {
   userId: UserId;
   joinedAt: Date;
 }): ParticipantState {
-  return {
-    ...createParticipant(input),
-    managementRole: 'HOST',
-    audioRole: 'SPEAKER',
-  };
+  return { ...createParticipant(input), managementRole: 'HOST', audioRole: 'SPEAKER' };
 }
 
 export function createParticipant(input: {
@@ -88,12 +78,7 @@ export function createParticipantSession(input: {
   connectionId: ConnectionId;
   connectedAt: Date;
 }): ParticipantSessionState {
-  return {
-    ...input,
-    disconnectedAt: null,
-    intentionalLeave: false,
-    recoverableUntil: null,
-  };
+  return { ...input, disconnectedAt: null, intentionalLeave: false, recoverableUntil: null };
 }
 
 export function promoteToSpeaker(participant: ParticipantState): ParticipantState {
@@ -102,7 +87,6 @@ export function promoteToSpeaker(participant: ParticipantState): ParticipantStat
     ? participant
     : { ...participant, audioRole: 'SPEAKER' };
 }
-
 export function demoteToListener(participant: ParticipantState): ParticipantState {
   ensureConnected(participant);
   if (participant.managementRole !== 'NONE')
@@ -112,35 +96,29 @@ export function demoteToListener(participant: ParticipantState): ParticipantStat
     );
   return { ...participant, audioRole: 'LISTENER' };
 }
-
 export function promoteToCoHost(participant: ParticipantState): ParticipantState {
   ensureConnected(participant);
   return participant.managementRole === 'HOST'
     ? participant
     : { ...participant, managementRole: 'CO_HOST', audioRole: 'SPEAKER' };
 }
-
 export function demoteFromCoHost(participant: ParticipantState): ParticipantState {
   ensureConnected(participant);
   return participant.managementRole !== 'CO_HOST'
     ? participant
     : { ...participant, managementRole: 'NONE', audioRole: 'SPEAKER' };
 }
-
 export function setSelfMuted(participant: ParticipantState, muted: boolean): ParticipantState {
   ensureConnected(participant);
   return { ...participant, selfMuted: muted };
 }
-
 export function setModeratorMuted(participant: ParticipantState, muted: boolean): ParticipantState {
   ensureConnected(participant);
   return { ...participant, moderatorMuted: muted };
 }
-
 export function canRaiseHand(participant: ParticipantState): boolean {
   return participant.status === 'CONNECTED' && participant.audioRole === 'SPEAKER';
 }
-
 export function canTransmitAudio(participant: ParticipantState): boolean {
   return (
     participant.status === 'CONNECTED' &&
@@ -158,19 +136,32 @@ export function markDisconnected(
   return { ...participant, status: 'DISCONNECTED', disconnectedAt };
 }
 
+/** Terminalizes a recoverable participant after its reconnection window has expired. */
+export function markRecoveryExpired(
+  participant: ParticipantState,
+  expiredAt: Date
+): ParticipantState {
+  if (participant.status !== 'DISCONNECTED') return participant;
+  return {
+    ...participant,
+    status: 'LEFT',
+    managementRole: 'NONE',
+    audioRole: 'LISTENER',
+    leftAt: expiredAt,
+  };
+}
+
 export function markReconnected(participant: ParticipantState): ParticipantState {
   if (participant.status === 'LEFT' || participant.status === 'REMOVED')
     throw new DomainError('INVALID_STATE', 'This participant cannot be reconnected.');
   return { ...participant, status: 'CONNECTED', disconnectedAt: null };
 }
-
 export function markLeft(participant: ParticipantState, leftAt: Date): ParticipantState {
   if (participant.status === 'LEFT') return participant;
   if (participant.status === 'REMOVED')
     throw new DomainError('PARTICIPANT_REMOVED', 'A removed participant cannot leave again.');
   return { ...participant, status: 'LEFT', leftAt };
 }
-
 export function markRoomEnded(participant: ParticipantState, endedAt: Date): ParticipantState {
   if (participant.status === 'REMOVED') return participant;
   return {
@@ -182,7 +173,6 @@ export function markRoomEnded(participant: ParticipantState, endedAt: Date): Par
     disconnectedAt: null,
   };
 }
-
 export function markRemoved(participant: ParticipantState, removedAt: Date): ParticipantState {
   if (participant.status === 'REMOVED') return participant;
   return {
@@ -202,7 +192,6 @@ export function markSessionDisconnected(
   if (session.disconnectedAt !== null) return session;
   return { ...session, disconnectedAt, recoverableUntil };
 }
-
 export function markSessionReconnected(
   session: ParticipantSessionState,
   connectionId: ConnectionId,
@@ -210,26 +199,20 @@ export function markSessionReconnected(
 ): ParticipantSessionState {
   if (session.intentionalLeave)
     throw new DomainError('INVALID_STATE', 'An intentionally closed session cannot reconnect.');
-  return {
-    ...session,
-    connectionId,
-    connectedAt,
-    disconnectedAt: null,
-    recoverableUntil: null,
-  };
+  return { ...session, connectionId, connectedAt, disconnectedAt: null, recoverableUntil: null };
 }
-
 export function markSessionIntentionalLeave(
   session: ParticipantSessionState
 ): ParticipantSessionState {
-  return {
-    ...session,
-    connectionId: null,
-    intentionalLeave: true,
-    recoverableUntil: null,
-  };
+  return { ...session, connectionId: null, intentionalLeave: true, recoverableUntil: null };
 }
-
+/** Closes an expired recovery session without marking the departure as intentional. */
+export function markSessionRecoveryExpired(
+  session: ParticipantSessionState
+): ParticipantSessionState {
+  if (session.intentionalLeave) return session;
+  return { ...session, connectionId: null, recoverableUntil: null };
+}
 export function canRecoverParticipantSession(session: ParticipantSessionState, now: Date): boolean {
   return (
     !session.intentionalLeave &&
@@ -239,7 +222,6 @@ export function canRecoverParticipantSession(session: ParticipantSessionState, n
     now.getTime() < session.recoverableUntil.getTime()
   );
 }
-
 function ensureConnected(participant: ParticipantState): void {
   if (participant.status !== 'CONNECTED')
     throw new DomainError(
