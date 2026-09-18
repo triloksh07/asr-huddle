@@ -25,6 +25,7 @@ export interface MediaRpcClientOptions {
   metrics?: RuntimeMetrics;
   logger?: StructuredLogger;
 }
+
 interface MediaRpcSuccessBody {
   readonly requestId: string;
   readonly ok: true;
@@ -36,6 +37,7 @@ interface MediaRpcFailureBody {
   readonly error: { readonly code: string; readonly message: string };
 }
 type MediaRpcResponseBody = MediaRpcSuccessBody | MediaRpcFailureBody;
+
 function isMediaRpcResponseBody(value: unknown): value is MediaRpcResponseBody {
   if (!value || typeof value !== 'object') return false;
   const body = value as Record<string, unknown>;
@@ -49,10 +51,12 @@ function isMediaRpcResponseBody(value: unknown): value is MediaRpcResponseBody {
 export class RpcMediaService implements MediaService {
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
+
   constructor(private readonly options: MediaRpcClientOptions) {
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.timeoutMs = options.requestTimeoutMs ?? 5000;
   }
+
   createRouter(
     context: CreateRoomMediaContext
   ): Promise<{ routerId: string; rtpCapabilities: MediaCapabilities }> {
@@ -76,7 +80,9 @@ export class RpcMediaService implements MediaService {
   revokeAudioProduction(context: JoinMediaContext): Promise<void> {
     return this.call(mediaRpcMethods.revokeAudioProduction, context);
   }
-  closeParticipantMedia(context: JoinMediaContext): Promise<void> {
+  closeParticipantMedia(
+    context: Parameters<MediaService['closeParticipantMedia']>[0]
+  ): Promise<void> {
     return this.call(mediaRpcMethods.closeParticipant, context);
   }
   closeRoomMedia(context: CreateRoomMediaContext): Promise<void> {
@@ -87,6 +93,15 @@ export class RpcMediaService implements MediaService {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     const startedAt = performance.now();
+    const requestId = randomUUID();
+    const context = extractLogContext(params);
+
+    this.options.logger?.info('media_rpc_started', {
+      requestId,
+      operation: method,
+      ...context,
+    });
+
     try {
       const response = await this.fetchImpl(`${this.options.baseUrl}/rpc/media`, {
         method: 'POST',
@@ -94,7 +109,7 @@ export class RpcMediaService implements MediaService {
           'content-type': 'application/json',
           authorization: `Bearer ${this.options.authSecret}`,
         },
-        body: JSON.stringify({ requestId: randomUUID(), method, params }),
+        body: JSON.stringify({ requestId, method, params }),
         signal: controller.signal,
       });
       let rawBody: unknown;
@@ -103,21 +118,32 @@ export class RpcMediaService implements MediaService {
       } catch {
         throw new MediaControlError('MEDIA_RPC_INVALID_RESPONSE', 'SFU returned invalid JSON.');
       }
-      if (!isMediaRpcResponseBody(rawBody))
+      if (!isMediaRpcResponseBody(rawBody)) {
         throw new MediaControlError(
           'MEDIA_RPC_INVALID_RESPONSE',
           'SFU returned an invalid response.'
         );
+      }
+      if (rawBody.requestId !== requestId) {
+        throw new MediaControlError(
+          'MEDIA_RPC_INVALID_RESPONSE',
+          'SFU response requestId did not match the request.'
+        );
+      }
       if (!response.ok || rawBody.ok !== true) {
         const failure = rawBody as MediaRpcFailureBody;
         throw new MediaControlError(failure.error.code, failure.error.message);
       }
-      this.options.metrics?.recordDependency(
-        'media_rpc',
-        methodToMetric(method),
-        true,
-        performance.now() - startedAt
-      );
+      const durationMs = performance.now() - startedAt;
+      this.options.metrics?.recordDependency('media_rpc', methodToMetric(method), true, durationMs);
+      this.options.logger?.info('media_rpc_completed', {
+        requestId,
+        operation: method,
+        statusCode: response.status,
+        durationMs: Math.round(durationMs * 100) / 100,
+        result: 'success',
+        ...context,
+      });
       return rawBody.result as T;
     } catch (error) {
       const durationMs = performance.now() - startedAt;
@@ -127,21 +153,43 @@ export class RpcMediaService implements MediaService {
         false,
         durationMs
       );
+      const normalizedError =
+        error instanceof DOMException && error.name === 'AbortError'
+          ? new MediaControlError('MEDIA_RPC_TIMEOUT', 'SFU media operation timed out.')
+          : error instanceof MediaControlError
+            ? error
+            : new MediaControlError('MEDIA_RPC_UNAVAILABLE', 'SFU media service is unavailable.');
       this.options.logger?.error('dependency_operation_failed', {
+        requestId,
         dependency: 'media_rpc',
         operation: methodToMetric(method),
         durationMs: Math.round(durationMs * 100) / 100,
-        error: error instanceof Error ? error.message : 'unknown',
+        error: normalizedError.message,
+        errorCode: normalizedError.code,
+        ...context,
       });
-      if (error instanceof MediaControlError) throw error;
-      if (error instanceof DOMException && error.name === 'AbortError')
-        throw new MediaControlError('MEDIA_RPC_TIMEOUT', 'SFU media operation timed out.');
-      throw new MediaControlError('MEDIA_RPC_UNAVAILABLE', 'SFU media service is unavailable.');
+      throw normalizedError;
     } finally {
       clearTimeout(timeout);
     }
   }
 }
+
+function extractLogContext(params: object): Record<string, unknown> {
+  const value = params as Record<string, unknown>;
+  const fields: Record<string, unknown> = {};
+  for (const key of [
+    'roomId',
+    'roomSessionId',
+    'participantId',
+    'participantSessionId',
+    'connectionId',
+  ]) {
+    if (typeof value[key] === 'string') fields[key] = value[key];
+  }
+  return fields;
+}
+
 function methodToMetric(method: string): string {
   return method.replace(/[^a-zA-Z0-9_]/g, '_');
 }

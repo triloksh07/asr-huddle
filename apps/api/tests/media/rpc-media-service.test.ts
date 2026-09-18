@@ -6,17 +6,22 @@ const ctx = {
   roomSessionId: 'room-session-1' as never,
   participantId: 'participant-1' as never,
   participantSessionId: 'participant-session-1' as never,
+  connectionId: 'connection-1' as never,
 };
 
 describe('RpcMediaService', () => {
-  it('sends the media RPC with room/session identity', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        requestId: 'rpc-1',
+  it('sends the media RPC with room/session identity and correlates the response', async () => {
+    const fetchImpl = vi.fn().mockImplementation(async (_url, init) => {
+      const request = JSON.parse(String(init.body));
+      return {
         ok: true,
-        result: { transportId: 't1', iceParameters: {}, iceCandidates: [], dtlsParameters: {} },
-      }),
+        status: 200,
+        json: async () => ({
+          requestId: request.requestId,
+          ok: true,
+          result: { transportId: 't1', iceParameters: {}, iceCandidates: [], dtlsParameters: {} },
+        }),
+      };
     });
     const result = await new RpcMediaService({
       baseUrl: 'http://sfu:4001',
@@ -33,9 +38,35 @@ describe('RpcMediaService', () => {
     });
   });
 
+  it('accepts an explicit null result for void operations', async () => {
+    const fetchImpl = vi.fn().mockImplementation(async (_url, init) => {
+      const request = JSON.parse(String(init.body));
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ requestId: request.requestId, ok: true, result: null }),
+      };
+    });
+    await expect(
+      new RpcMediaService({ baseUrl: 'http://sfu:4001', fetchImpl }).revokeAudioProduction(ctx)
+    ).resolves.toBeUndefined();
+  });
+
+  it('rejects a mismatched response requestId', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ requestId: 'different-request', ok: true, result: null }),
+    });
+    await expect(
+      new RpcMediaService({ baseUrl: 'http://sfu:4001', fetchImpl }).revokeAudioProduction(ctx)
+    ).rejects.toMatchObject({ code: 'MEDIA_RPC_INVALID_RESPONSE' });
+  });
+
   it('maps upstream failures to MediaControlError', async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: false,
+      status: 404,
       json: async () => ({
         requestId: 'rpc-1',
         ok: false,
