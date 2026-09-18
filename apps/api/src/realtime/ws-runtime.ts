@@ -153,12 +153,50 @@ export function createRealtimeRuntime(
 
         for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
           try {
-            await disconnectRoom.execute({
+            const disconnected = await disconnectRoom.execute({
               participantId,
               participantSessionId,
               connectionId,
               recoverableForMs: disconnectRecoveryMs,
             });
+
+            if (disconnected) {
+              const mediaRetryDelaysMs = [250, 500, 1_000, 2_000, 5_000] as const;
+              for (
+                let mediaAttempt = 0;
+                mediaAttempt <= mediaRetryDelaysMs.length;
+                mediaAttempt += 1
+              ) {
+                try {
+                  const registered = registry.get(connectionId);
+                  const roomId = registered?.roomId;
+                  const roomSessionId = registered?.roomSessionId;
+
+                  if (!roomId || !roomSessionId) break;
+
+                  await _media.closeParticipant({
+                    roomId,
+                    roomSessionId,
+                    participantId: participantId as never,
+                    participantSessionId: participantSessionId as never,
+                    connectionId,
+                  });
+                  break;
+                } catch (mediaError) {
+                  const retryInMs = mediaRetryDelaysMs[mediaAttempt];
+                  logger?.error('realtime_disconnect_media_cleanup_failed', {
+                    connectionId,
+                    participantId,
+                    participantSessionId,
+                    attempt: mediaAttempt + 1,
+                    retryInMs: retryInMs ?? null,
+                    error: mediaError instanceof Error ? mediaError.message : 'unknown',
+                  });
+                  if (retryInMs === undefined) break;
+                  await new Promise<void>(resolve => setTimeout(resolve, retryInMs));
+                }
+              }
+            }
 
             if (attempt > 0) {
               logger?.info('realtime_disconnect_persist_recovered', {

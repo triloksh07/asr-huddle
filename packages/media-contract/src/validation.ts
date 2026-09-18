@@ -17,6 +17,7 @@ export const joinMediaContextSchema = identity.extend({
 export const closeParticipantMediaSchema = identity.extend({
   participantId: z.string().min(1),
   participantSessionId: z.string().min(1),
+  connectionId: z.string().min(1),
 });
 
 export const createTransportSchema = joinMediaContextSchema.extend({

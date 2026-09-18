@@ -13,6 +13,7 @@ export interface ParticipantAudioRevocation {
     roomSessionId: string;
     participantId: string;
     participantSessionId: string;
+    connectionId: string;
   }): Promise<void>;
 }
 
@@ -42,6 +43,7 @@ export class DemoteSpeaker {
         roomSessionId: t.roomSessionId,
         participantId: t.id,
         participantSessionId: activeSession.id,
+        connectionId: activeSession.connectionId,
       });
     }
 

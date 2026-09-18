@@ -29,6 +29,7 @@ export interface CloseParticipantMediaContext {
   roomSessionId: RoomSessionId;
   participantId: ParticipantId;
   participantSessionId: ParticipantSessionId;
+  connectionId: ConnectionId;
 }
 
 export interface MediaCapabilities {

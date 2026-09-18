@@ -16,6 +16,7 @@ export interface RemovedParticipantRuntime {
     roomSessionId: string;
     participantId: string;
     participantSessionId: string;
+    connectionId: string;
   }): Promise<void>;
 }
 
@@ -49,6 +50,7 @@ export class RemoveParticipant {
         roomSessionId: target.roomSessionId,
         participantId: target.id,
         participantSessionId: session.id,
+        connectionId: session.connectionId,
       });
     }
 

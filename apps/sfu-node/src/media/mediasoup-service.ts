@@ -9,6 +9,7 @@ import type {
   MediaCapabilities,
   CreateRoomMediaContext,
   JoinMediaContext,
+  CloseParticipantMediaContext,
   CreateTransportResult,
   ConnectTransportCommand,
   ProduceAudioCommand,
@@ -24,6 +25,10 @@ import { SfuMetricName, SfuOperationalMetrics } from '../observability/sfu-opera
 import { SfuStructuredLogger } from '../observability/structured-logger.js';
 
 interface ParticipantMedia {
+  readonly roomSessionId: string;
+  readonly participantId: string;
+  readonly participantSessionId: string;
+  readonly connectionId: string;
   transports: Map<
     string,
     {
@@ -159,7 +164,7 @@ export class MediasoupMediaService implements MediaService {
     direction: MediaTransportDirection
   ): Promise<CreateTransportResult> {
     const room = this.requireRoom(context.roomId);
-    const participant = this.getOrCreateParticipant(room, context.participantId);
+    const participant = this.getOrCreateParticipant(room, context);
 
     const transport = await room.router.createWebRtcTransport({
       listenInfos: [
@@ -342,7 +347,13 @@ export class MediasoupMediaService implements MediaService {
 
   async consumeAudio(command: ConsumeAudioCommand): Promise<ConsumeAudioResult> {
     const room = this.requireRoom(command.roomId);
-    const participant = this.getOrCreateParticipant(room, command.participantId);
+    const participant = this.getOrCreateParticipant(room, {
+      roomId: command.roomId,
+      roomSessionId: room.roomSessionId,
+      participantId: command.participantId,
+      participantSessionId: command.participantSessionId,
+      connectionId: command.connectionId,
+    });
 
     if (
       !room.router.canConsume({
@@ -426,6 +437,16 @@ export class MediasoupMediaService implements MediaService {
     const participant = room.participants.get(context.participantId);
 
     if (!participant) return;
+    if (
+      participant.roomSessionId !== context.roomSessionId ||
+      participant.participantSessionId !== context.participantSessionId ||
+      participant.connectionId !== context.connectionId
+    ) {
+      throw new MediaPlaneError(
+        'MEDIA_IDENTITY_MISMATCH',
+        'Participant media ownership does not match the requested session.'
+      );
+    }
 
     for (const producer of participant.producers.values()) {
       if (
@@ -444,7 +465,11 @@ export class MediasoupMediaService implements MediaService {
 
     for (const participant of room.participants.values()) {
       for (const producer of participant.producers.values()) {
-        if (!producer.closed && producer.kind === 'audio') {
+        if (
+          !producer.closed &&
+          producer.kind === 'audio' &&
+          participant.roomSessionId === context.roomSessionId
+        ) {
           result.push({
             producerId: producer.id as never,
             participantId: producer.appData.participantId as ParticipantId,
@@ -458,7 +483,7 @@ export class MediasoupMediaService implements MediaService {
     return result;
   }
 
-  async closeParticipantMedia(context: JoinMediaContext): Promise<void> {
+  async closeParticipantMedia(context: CloseParticipantMediaContext): Promise<void> {
     const room = this.rooms.get(context.roomId);
 
     if (!room) return;
@@ -466,6 +491,16 @@ export class MediasoupMediaService implements MediaService {
     const participant = room.participants.get(context.participantId);
 
     if (!participant) return;
+    if (
+      participant.roomSessionId !== context.roomSessionId ||
+      participant.participantSessionId !== context.participantSessionId ||
+      participant.connectionId !== context.connectionId
+    ) {
+      throw new MediaPlaneError(
+        'MEDIA_IDENTITY_MISMATCH',
+        'Participant media ownership does not match the requested session.'
+      );
+    }
 
     for (const consumer of participant.consumers.values()) {
       consumer.close();
@@ -643,17 +678,30 @@ export class MediasoupMediaService implements MediaService {
     return room;
   }
 
-  private getOrCreateParticipant(room: RoomMedia, participantId: ParticipantId): ParticipantMedia {
-    let participant = room.participants.get(participantId);
+  private getOrCreateParticipant(room: RoomMedia, context: JoinMediaContext): ParticipantMedia {
+    let participant = room.participants.get(context.participantId);
 
     if (!participant) {
       participant = {
+        roomSessionId: context.roomSessionId,
+        participantId: context.participantId,
+        participantSessionId: context.participantSessionId,
+        connectionId: context.connectionId,
         transports: new Map(),
         producers: new Map(),
         consumers: new Map(),
       };
 
-      room.participants.set(participantId, participant);
+      room.participants.set(context.participantId, participant);
+    } else if (
+      participant.roomSessionId !== context.roomSessionId ||
+      participant.participantSessionId !== context.participantSessionId ||
+      participant.connectionId !== context.connectionId
+    ) {
+      throw new MediaPlaneError(
+        'MEDIA_SESSION_CONFLICT',
+        'Participant already has media resources owned by another session.'
+      );
     }
 
     return participant;

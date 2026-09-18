@@ -14,6 +14,7 @@ export interface ParticipantMediaControl {
     roomSessionId: string;
     participantId: string;
     participantSessionId: string;
+    connectionId: string;
   }): Promise<void>;
 }
 
@@ -51,6 +52,7 @@ export class MuteParticipant {
         roomSessionId: target.roomSessionId,
         participantId: target.id,
         participantSessionId: activeSession.id,
+        connectionId: activeSession.connectionId,
       });
     }
 

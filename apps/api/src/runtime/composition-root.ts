@@ -247,7 +247,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
     rateLimitViolationWindowMs: config.rateLimits.violationWindowMs,
   });
   router.register(new JoinRoomRealtimeCommand(join, snapshot, eventSequence));
-  router.register(new LeaveRoomRealtimeCommand(leave));
+  router.register(new LeaveRoomRealtimeCommand(leave, mediaController));
   router.register(new EndRoomRealtimeCommand(roomControl));
   router.register(new ReconnectRoomRealtimeCommand(reconnect, snapshot, eventSequence));
   router.register(new CreateMediaTransportCommand(mediaController));

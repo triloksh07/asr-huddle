@@ -2,12 +2,14 @@ import { markDisconnected, markSessionDisconnected } from '@repo/domain';
 import { ApplicationError } from '../errors.js';
 import type { ApplicationClock, EventPublisher, Transaction } from '../ports.js';
 import type { HostDelegator } from './types.js';
+
 export interface DisconnectRoomCommand {
   readonly participantId: string;
   readonly participantSessionId: string;
   readonly connectionId: string;
   readonly recoverableForMs: number;
 }
+
 export class DisconnectRoom {
   constructor(
     private readonly transaction: Transaction,
@@ -15,7 +17,8 @@ export class DisconnectRoom {
     private readonly events: EventPublisher,
     private readonly hostDelegator?: HostDelegator
   ) {}
-  async execute(command: DisconnectRoomCommand): Promise<void> {
+
+  async execute(command: DisconnectRoomCommand): Promise<boolean> {
     const result = await this.transaction.run(async ({ participants, participantSessions }) => {
       const participant = await participants.findById(command.participantId);
       if (!participant) throw new ApplicationError('NOT_FOUND', 'Participant was not found.');
@@ -49,7 +52,7 @@ export class DisconnectRoom {
       };
     });
 
-    if (!result) return;
+    if (!result) return false;
 
     await this.events.publish({
       type: 'participant.disconnected',
@@ -65,10 +68,13 @@ export class DisconnectRoom {
         recoverableUntil: result.recoverableUntil.toISOString(),
       },
     });
+
     if (result.wasHost)
       await this.hostDelegator?.execute({
         roomSessionId: result.roomSessionId,
         previousHostParticipantId: result.participantId,
       });
+    
+      return true;
   }
 }
