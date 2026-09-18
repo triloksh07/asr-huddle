@@ -58,7 +58,7 @@ type ParticipantRow = {
 type ParticipantSessionRow = {
   id: string;
   participantId: string;
-  connectionId: string;
+  connectionId: string | null;
   connectedAt: Date;
   disconnectedAt: Date | null;
   intentionalLeave: number;

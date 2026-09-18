@@ -39,14 +39,17 @@ export class ReconnectRoom {
         const user = await users.findById(command.userId);
         if (!user)
           throw new ApplicationError('UNAUTHENTICATED', 'Authenticated user was not found.');
+
         const room = await rooms.findById(command.roomId);
         if (!room) throw new ApplicationError('NOT_FOUND', 'Room was not found.');
+
         const roomSession = await roomSessions.findActiveByRoomId(command.roomId);
         if (!roomSession) throw new ApplicationError('ROOM_ENDED', 'The room is not active.');
         assertRoomSessionActive(roomSession);
 
         const participant = await participants.findById(command.participantId);
         if (!participant) throw new ApplicationError('NOT_FOUND', 'Participant was not found.');
+
         if (
           participant.roomId !== room.id ||
           participant.roomSessionId !== roomSession.id ||
@@ -56,6 +59,7 @@ export class ReconnectRoom {
             'FORBIDDEN',
             'Participant does not belong to this authenticated room session.'
           );
+
         if (participant.status !== 'DISCONNECTED')
           throw new ApplicationError(
             'CONFLICT',
@@ -64,13 +68,21 @@ export class ReconnectRoom {
 
         const session = await participantSessions.findById(command.participantSessionId);
         if (!session) throw new ApplicationError('NOT_FOUND', 'Participant session was not found.');
+
         if (session.participantId !== participant.id)
           throw new ApplicationError(
             'FORBIDDEN',
             'Participant session does not belong to the participant.'
           );
 
+        if (session.connectionId === null)
+          throw new ApplicationError(
+            'CONFLICT',
+            'This participant session no longer has a recoverable connection binding.'
+          );
+
         const now = this.clock.now();
+
         if (!canRecoverParticipantSession(session, now))
           throw new ApplicationError('CONFLICT', 'The participant recovery window has expired.');
 
@@ -87,6 +99,7 @@ export class ReconnectRoom {
           command.connectionId,
           now
         );
+
         if (!claimedSession)
           throw new ApplicationError(
             'CONFLICT',
@@ -95,6 +108,7 @@ export class ReconnectRoom {
 
         const updatedParticipant = markReconnected(participant);
         await participants.save(updatedParticipant);
+
         return {
           roomId: participant.roomId,
           roomSessionId: participant.roomSessionId,
@@ -119,6 +133,7 @@ export class ReconnectRoom {
       userId: result.userId,
       payload: { ...result, mediaRecoveryRequired: true },
     });
+
     return result;
   }
 }

@@ -155,7 +155,7 @@ export const participantSessions = pgTable(
     participantId: uuid('participant_id')
       .notNull()
       .references(() => participants.id),
-    connectionId: varchar('connection_id', { length: 128 }).notNull(),
+    connectionId: varchar('connection_id', { length: 128 }),
     status: participantSessionStatusEnum('status').notNull().default('ACTIVE'),
     connectedAt: timestamp('connected_at', { withTimezone: true }).notNull(),
     disconnectedAt: timestamp('disconnected_at', { withTimezone: true }),
