@@ -17,7 +17,7 @@ import type {
   ConsumeAudioCommand,
   ConsumeAudioResult,
 } from '@repo/media-contract';
-import type { ParticipantId, ParticipantSessionId } from '@repo/domain';
+import type { ParticipantId, ParticipantSessionId, RoomSessionId } from '@repo/domain';
 import * as mediasoup from 'mediasoup';
 import type { Consumer, Producer, Router, WebRtcTransport, Worker } from 'mediasoup/types';
 import { MediaPlaneError } from './errors.js';
@@ -349,7 +349,7 @@ export class MediasoupMediaService implements MediaService {
     const room = this.requireRoom(command.roomId);
     const participant = this.getOrCreateParticipant(room, {
       roomId: command.roomId,
-      roomSessionId: room.roomSessionId,
+      roomSessionId: room.roomSessionId as RoomSessionId,
       participantId: command.participantId,
       participantSessionId: command.participantSessionId,
       connectionId: command.connectionId,
@@ -595,7 +595,7 @@ export class MediasoupMediaService implements MediaService {
     try {
       await this.options.realtimeEvents.publish({
         roomId,
-        roomSessionId: room.roomSessionId,
+        roomSessionId: room.roomSessionId as RoomSessionId,
         type: 'media.audio.active-speakers.updated',
         occurredAt: new Date().toISOString(),
         payload,
