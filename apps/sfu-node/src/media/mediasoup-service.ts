@@ -381,7 +381,6 @@ export class MediasoupMediaService implements MediaService {
     if (
       entry.transport.appData.participantId !== command.participantId ||
       entry.transport.appData.participantSessionId !== command.participantSessionId ||
-      entry.transport.appData.participantSessionId !== command.participantSessionId ||
       entry.transport.appData.connectionId !== command.connectionId
     ) {
       throw new MediaPlaneError(
