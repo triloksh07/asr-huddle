@@ -28,6 +28,16 @@ type ConsumeResult = {
   rtpParameters: any;
 };
 
+type ReconnectResult = {
+  roomId: string;
+  roomSessionId: string;
+  participantId: string;
+  participantSessionId: string;
+  snapshot?: unknown;
+  sequence?: number;
+  mediaRecoveryRequired: boolean;
+};
+
 export type AudioSession = {
   roomId: string;
   roomSessionId: string;
@@ -65,9 +75,11 @@ export class RuntimeAudioClient {
   get currentSession() {
     return this.session;
   }
+
   get hasProducer() {
     return !!this.producer;
   }
+
   get consumerCount() {
     return this.consumers.size;
   }
@@ -86,6 +98,94 @@ export class RuntimeAudioClient {
 
     this.log(`room.join OK participant=${this.session.participantId}`);
     await this.initializeReceivePath();
+    return this.session;
+  }
+
+  /**
+   * Recover an existing participant/session on a newly authenticated WebSocket.
+   *
+   * The recovered logical identity is reused, but every SFU resource is rebuilt
+   * under the new realtime connection. The old producer/transport is never
+   * reused. Microphone capture is retained when possible so browser permission
+   * does not need to be requested again; the server still decides whether a
+   * fresh producer may be created.
+   */
+  async reconnect(ws: WebSocket): Promise<AudioSession> {
+    if (!this.session) throw new Error('No recoverable room session is available.');
+
+    const previousSession = this.session;
+    const shouldRestoreProducer = !!this.producer;
+
+    this.ws.removeEventListener('message', this.onMessage);
+    for (const pending of this.pending.values()) {
+      pending.reject(new Error('Realtime connection replaced for media recovery.'));
+    }
+    this.pending.clear();
+
+    this.ws = ws;
+    this.ws.addEventListener('message', this.onMessage);
+
+    const result = await this.command<ReconnectResult>('room.reconnect', {
+      roomId: previousSession.roomId,
+      participantId: previousSession.participantId,
+      participantSessionId: previousSession.participantSessionId,
+    });
+
+    if (!result.ok) {
+      throw new Error(result.error.message);
+    }
+
+    const recovered = result.payload;
+
+    if (!recovered.mediaRecoveryRequired) {
+      throw new Error('Server did not request media recovery for the reconnected session.');
+    }
+
+    if (
+      recovered.roomId !== previousSession.roomId ||
+      recovered.roomSessionId !== previousSession.roomSessionId ||
+      recovered.participantId !== previousSession.participantId ||
+      recovered.participantSessionId !== previousSession.participantSessionId
+    ) {
+      throw new Error('Reconnect returned a different participant/session identity.');
+    }
+
+    this.session = {
+      roomId: recovered.roomId,
+      roomSessionId: recovered.roomSessionId,
+      participantId: recovered.participantId,
+      participantSessionId: recovered.participantSessionId,
+    };
+
+    this.log(
+      `room.reconnect OK participant=${this.session.participantId} ` +
+        `session=${this.session.participantSessionId} mediaRecoveryRequired=true`
+    );
+
+    // The old SFU resources were already invalidated by the server-side
+    // disconnect path. Locally discard every old mediasoup object as well.
+    // Keep the capture track so a valid speaker can establish a fresh producer
+    // without another browser permission prompt.
+    this.closeMedia({ preserveMicrophone: true });
+
+    await this.initializeReceivePath();
+
+    const audioState = await this.getAudioState();
+    this.log(
+      `reconnect media authorization role=${audioState.audioRole} ` +
+        `selfMuted=${audioState.selfMuted} moderatorMuted=${audioState.moderatorMuted} ` +
+        `canTransmitAudio=${audioState.canTransmitAudio}`
+    );
+
+    if (shouldRestoreProducer && audioState.canTransmitAudio) {
+      await this.produceMicrophone();
+      this.log('microphone producer recovered on the new media session');
+    } else if (shouldRestoreProducer) {
+      this.log(
+        'previous producer existed, but current server state does not authorize transmission'
+      );
+    }
+
     return this.session;
   }
 
@@ -117,25 +217,8 @@ export class RuntimeAudioClient {
     if (!this.device) await this.initializeDevice();
     await this.initializeSendTransport();
 
-    if (!this.microphoneTrack) {
-      this.log('Requesting browser microphone permission...');
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      const track = stream.getAudioTracks()[0];
-      if (!track) throw new Error('No microphone audio track returned.');
-      this.microphoneTrack = track;
-    }
-
-    this.log('Producing microphone audio...');
-    const producer = await this.sendTransport!.produce({
-      track: this.microphoneTrack,
-      appData: {
-        participantId: this.session.participantId,
-        participantSessionId: this.session.participantSessionId,
-      },
-    });
-
-    this.producer = producer;
-    this.log(`producer active id=${producer.id}`);
+    await this.ensureMicrophoneTrack();
+    await this.produceMicrophone();
     await this.consumeCurrentProducers();
   }
 
@@ -304,6 +387,35 @@ export class RuntimeAudioClient {
     this.log(`consumer active id=${consumer.id} producer=${result.payload.producerId}`);
   }
 
+  private async ensureMicrophoneTrack(): Promise<void> {
+    if (this.microphoneTrack && this.microphoneTrack.readyState !== 'ended') return;
+
+    this.log('Requesting browser microphone permission...');
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    const track = stream.getAudioTracks()[0];
+    if (!track) throw new Error('No microphone audio track returned.');
+    this.microphoneTrack = track;
+  }
+
+  private async produceMicrophone(): Promise<void> {
+    if (!this.session) throw new Error('Join a room first.');
+    if (this.producer) return;
+    if (!this.sendTransport) throw new Error('Send transport is not initialized.');
+    if (!this.microphoneTrack) throw new Error('Microphone track is not initialized.');
+
+    this.log('Producing microphone audio...');
+    const producer = await this.sendTransport.produce({
+      track: this.microphoneTrack,
+      appData: {
+        participantId: this.session.participantId,
+        participantSessionId: this.session.participantSessionId,
+      },
+    });
+
+    this.producer = producer;
+    this.log(`producer active id=${producer.id}`);
+  }
+
   private readonly onMessage = (event: MessageEvent) => {
     let message: any;
     try {
@@ -354,13 +466,17 @@ export class RuntimeAudioClient {
     });
   }
 
-  private closeMedia(): void {
-    this.microphoneTrack?.stop();
+  private closeMedia(options: { preserveMicrophone?: boolean } = {}): void {
     this.producer?.close();
     for (const consumer of this.consumers.values()) consumer.close();
     this.sendTransport?.close();
     this.recvTransport?.close();
-    this.microphoneTrack = undefined;
+
+    if (!options.preserveMicrophone) {
+      this.microphoneTrack?.stop();
+      this.microphoneTrack = undefined;
+    }
+
     this.producer = undefined;
     this.sendTransport = undefined;
     this.recvTransport = undefined;
