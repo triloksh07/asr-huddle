@@ -35,7 +35,7 @@ export class SetSelfMute {
       const activeSession = await this.participantSessions.findActiveByParticipantId(
         participant.id
       );
-      if (activeSession) {
+      if (activeSession?.connectionId !== null && activeSession) {
         // Revoke the live producer using the exact session/connection identity that owns it.
         // The durable mute state is committed only after the media boundary accepts the revoke.
         await this.media.revokeAudioProduction({

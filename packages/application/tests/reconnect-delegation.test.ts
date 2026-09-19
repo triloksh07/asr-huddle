@@ -62,7 +62,13 @@ class Sessions implements ParticipantSessionRepository {
   }
   async findActiveByParticipantId(id: string) {
     return (
-      [...this.values.values()].find(s => s.participantId === id && s.status === 'ACTIVE') ?? null
+      [...this.values.values()].find(
+        s =>
+          s.participantId === id &&
+          s.connectionId !== null &&
+          s.disconnectedAt === null &&
+          !s.intentionalLeave
+      ) ?? null
     );
   }
   async findByParticipantId(id: string) {
@@ -82,15 +88,14 @@ class Sessions implements ParticipantSessionRepository {
       current.intentionalLeave
     )
       return null;
+
     const claimed: ParticipantSessionState = {
       ...current,
       connectionId: connectionId as ConnectionId,
-      status: 'ACTIVE',
       connectedAt,
       disconnectedAt: null,
       recoverableUntil: null,
       intentionalLeave: false,
-      closedAt: null,
     };
     this.values.set(sessionId, claimed);
     return claimed;

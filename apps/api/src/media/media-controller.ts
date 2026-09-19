@@ -93,7 +93,7 @@ export class MediaController {
 
   async createTransport(context: MediaSessionContext, payload: unknown) {
     const parsed = createTransportSchema.safeParse(payload);
-    if (!parsed.success) {
+    if (!parsed.success || !parsed.data.direction) {
       throw new MediaControlError('INVALID_MEDIA_COMMAND', 'Invalid transport creation payload.');
     }
 

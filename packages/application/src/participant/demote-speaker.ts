@@ -35,7 +35,7 @@ export class DemoteSpeaker {
       throw new ApplicationError('FORBIDDEN', 'Participants are not in the same room.');
 
     const activeSession = await this.participantSessions?.findActiveByParticipantId(t.id);
-    if (this.media && activeSession) {
+    if (this.media && activeSession?.connectionId !== null && activeSession) {
       // Demotion removes transmit authorization, so revoke the live producer before changing
       // durable role state. If media cleanup fails, the role remains unchanged.
       await this.media.revokeAudioProduction({

@@ -42,7 +42,7 @@ export class RemoveParticipant {
     assertCanModerateTarget(moderator, target);
 
     const session = await this.sessions.findActiveByParticipantId(target.id);
-    if (session) {
+    if (session?.connectionId !== null && session) {
       // Removal revokes the participant's entire media session. Do this before committing the
       // removal so an SFU failure cannot leave a removed participant's media resources alive.
       await this.runtime.closeMedia({
