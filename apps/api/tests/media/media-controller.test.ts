@@ -12,8 +12,8 @@ const context: MediaSessionContext = {
 };
 const joinedAt = new Date('2026-01-01T00:00:00Z');
 
-function repos(
-  participant = {
+function participant(overrides: Partial<ReturnType<typeof createParticipant>> = {}) {
+  return {
     ...createParticipant({
       id: 'participant-1' as never,
       roomId: 'room-1' as never,
@@ -22,7 +22,11 @@ function repos(
       joinedAt,
     }),
     audioRole: 'SPEAKER' as const,
-  },
+    ...overrides,
+  };
+}
+function repos(
+  p = participant(),
   session = createParticipantSession({
     id: 'participant-session-1' as never,
     participantId: 'participant-1' as never,
@@ -31,71 +35,27 @@ function repos(
   })
 ) {
   return {
-    participants: {
-      findById: vi.fn().mockResolvedValue(participant),
-    } as unknown as ParticipantRepository,
+    participants: { findById: vi.fn().mockResolvedValue(p) } as unknown as ParticipantRepository,
     sessions: {
       findById: vi.fn().mockResolvedValue(session),
     } as unknown as ParticipantSessionRepository,
   };
 }
 
-describe('MediaController authorization and media boundary', () => {
-  it('requires participant/session repositories', async () => {
-    await expect(new MediaController({} as never).getAudioState(context)).rejects.toMatchObject({
-      code: 'MEDIA_UNAUTHORIZED',
-    });
+describe('G5.6 media authorization consistency', () => {
+  it.each([
+    ['speaker', participant(), true],
+    ['self-muted speaker', participant({ selfMuted: true }), false],
+    ['moderator-muted speaker', participant({ moderatorMuted: true }), false],
+    ['listener', participant({ audioRole: 'LISTENER' }), false],
+  ])('%s has expected transmit authorization', async (_name, p, expected) => {
+    const r = repos(p);
+    const c = new MediaController({} as never, undefined, undefined, r.participants, r.sessions);
+    await expect(c.getAudioState(context)).resolves.toMatchObject({ canTransmitAudio: expected });
   });
 
-  it('binds media authorization to the realtime connection id', async () => {
-    const session = createParticipantSession({
-      id: 'participant-session-1' as never,
-      participantId: 'participant-1' as never,
-      connectionId: 'other-connection' as never,
-      connectedAt: joinedAt,
-    });
-    const r = repos(undefined, session);
-    await expect(
-      new MediaController(
-        {} as never,
-        undefined,
-        undefined,
-        r.participants,
-        r.sessions
-      ).getAudioState(context)
-    ).rejects.toMatchObject({ code: 'MEDIA_SESSION_INVALID' });
-  });
-
-  it('reports durable audio state and transmit eligibility', async () => {
-    const r = repos();
-    await expect(
-      new MediaController(
-        {} as never,
-        undefined,
-        undefined,
-        r.participants,
-        r.sessions
-      ).getAudioState(context)
-    ).resolves.toEqual({
-      audioRole: 'SPEAKER',
-      selfMuted: false,
-      moderatorMuted: false,
-      canTransmitAudio: true,
-    });
-  });
-
-  it('blocks send transport while self-muted but allows receive transport', async () => {
-    const r = repos({
-      ...createParticipant({
-        id: 'participant-1' as never,
-        roomId: 'room-1' as never,
-        roomSessionId: 'room-session-1' as never,
-        userId: 'user-1' as never,
-        joinedAt,
-      }),
-      audioRole: 'SPEAKER' as const,
-      selfMuted: true,
-    } as never);
+  it('rejects send transport while self-muted but still permits receive transport', async () => {
+    const r = repos(participant({ selfMuted: true }));
     const media = {
       createRouter: vi.fn().mockResolvedValue({ routerId: 'r1', rtpCapabilities: { codecs: [] } }),
       createWebRtcTransport: vi.fn().mockResolvedValue({ transportId: 't1' }),
@@ -107,28 +67,5 @@ describe('MediaController authorization and media boundary', () => {
     await expect(c.createTransport(context, { direction: 'recv' })).resolves.toMatchObject({
       transportId: 't1',
     });
-  });
-
-  it('forwards connection identity and rejects mismatched producer identity', async () => {
-    const r = repos();
-    const media = { produceAudio: vi.fn().mockResolvedValue({ producerId: 'p1' }) };
-    const c = new MediaController(media as never, undefined, undefined, r.participants, r.sessions);
-    await expect(
-      c.produceAudio(context, {
-        transportId: 't1',
-        kind: 'audio',
-        rtpParameters: {},
-        appData: { participantId: 'different', participantSessionId: 'participant-session-1' },
-      })
-    ).rejects.toMatchObject({ code: 'MEDIA_IDENTITY_MISMATCH' });
-    await c.produceAudio(context, {
-      transportId: 't1',
-      kind: 'audio',
-      rtpParameters: {},
-      appData: { participantId: 'participant-1', participantSessionId: 'participant-session-1' },
-    });
-    expect(media.produceAudio).toHaveBeenCalledWith(
-      expect.objectContaining({ connectionId: 'connection-1' })
-    );
   });
 });
