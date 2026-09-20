@@ -16,7 +16,10 @@ export {
 
 export {
   createRoomInputSchema,
+  createRoomOutputSchema,
   roomIdInputSchema,
+  roomListOutputSchema,
+  roomStateOutputSchema,
 } from './room.js';
 
 export type { AuthResult, LoginInput, RegisterInput } from './auth.js';
