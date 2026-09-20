@@ -1,6 +1,23 @@
-/**
- * Transport-schema boundary. Route-local Zod schemas are added with the
- * procedure implementation so transport contracts stay separate from
- * application commands and domain models.
- */
-export type TransportSchemaModule = Record<string, unknown>;
+export {
+  emailSchema,
+  passwordSchema,
+  roomDurationMinutesSchema,
+  roomIdSchema,
+  roomVisibilitySchema,
+  userNameSchema,
+} from './common.js';
+
+export {
+  authResultSchema,
+  authenticatedUserSchema,
+  loginInputSchema,
+  registerInputSchema,
+} from './auth.js';
+
+export {
+  createRoomInputSchema,
+  roomIdInputSchema,
+} from './room.js';
+
+export type { AuthResult, LoginInput, RegisterInput } from './auth.js';
+export type { CreateRoomInput, RoomIdInput } from './room.js';

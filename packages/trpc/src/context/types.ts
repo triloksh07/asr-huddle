@@ -1,16 +1,3 @@
-import type { CreateHTTPContextOptions } from '@trpc/server/adapters/standalone';
-
-/**
- * Adapter-facing context factory contract.
- *
- * The implementation is supplied when the HTTP adapter is wired. T1 defines
- * the package-owned boundary without constructing ApiRuntime or authentication
- * inside the transport package.
- */
-// export type TRPCContextFactory = (
-//   options: CreateHTTPContextOptions,
-// ) => unknown | Promise<unknown>;
-
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 export interface AuthenticatedUser {

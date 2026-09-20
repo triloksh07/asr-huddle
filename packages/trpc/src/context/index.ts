@@ -1,11 +1,3 @@
-/**
- * Context is intentionally owned by @repo/trpc.
- *
- * The concrete ASR runtime/request/response/auth integration is introduced in
- * the context and authentication batches. Keeping this boundary here prevents
- * transport code from leaking application dependencies into the package root.
- */
-// export type { TRPCContextFactory } from "./types.js";
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AuthenticatedUser, TRPCContext, TRPCContextFactory, TRPCRuntime } from './types.js';
 
