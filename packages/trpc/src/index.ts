@@ -13,5 +13,6 @@ export type {
   TRPCRoomControl,
   TRPCRuntime,
 } from './context/index.js';
+
 export { appRouter, protectedProcedure, publicProcedure } from './router/index.js';
 export type { AppRouter } from './router/index.js';

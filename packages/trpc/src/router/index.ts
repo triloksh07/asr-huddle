@@ -1,9 +1,12 @@
 import { t } from './core.js';
 import { protectedProcedure, publicProcedure } from '../middleware/index.js';
+import { authRouter } from './auth/index.js';
 
 export { t } from './core.js';
 export { protectedProcedure, publicProcedure } from '../middleware/index.js';
 
-export const appRouter = t.router({});
+export const appRouter = t.router({
+  auth: t.router(authRouter),
+});
 
 export type AppRouter = typeof appRouter;
