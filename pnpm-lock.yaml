@@ -65,6 +65,12 @@ importers:
       '@repo/state-machine':
         specifier: workspace:*
         version: link:../../packages/state-machine
+      '@repo/trpc':
+        specifier: workspace:*
+        version: link:../../packages/trpc
+      '@trpc/server':
+        specifier: ^11.8.1
+        version: 11.19.0(typescript@5.9.3)
       '@types/cors':
         specifier: ^2.8.19
         version: 2.8.19
@@ -351,9 +357,15 @@ importers:
 
   packages/trpc:
     dependencies:
+      '@repo/application':
+        specifier: workspace:*
+        version: link:../application
       '@trpc/server':
         specifier: ^11.8.1
         version: 11.19.0(typescript@5.5.4)
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
     devDependencies:
       '@repo/tsconfig':
         specifier: workspace:*
@@ -3590,6 +3602,10 @@ snapshots:
   '@trpc/server@11.19.0(typescript@5.5.4)':
     dependencies:
       typescript: 5.5.4
+
+  '@trpc/server@11.19.0(typescript@5.9.3)':
+    dependencies:
+      typescript: 5.9.3
 
   '@tsconfig/node10@1.0.13': {}
 

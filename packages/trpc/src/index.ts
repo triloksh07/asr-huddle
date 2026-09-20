@@ -13,6 +13,6 @@ export type {
   TRPCRoomControl,
   TRPCRuntime,
 } from './context/index.js';
-
+export { mapApplicationError, mapTRPCError } from './errors/index.js';
 export { appRouter, protectedProcedure, publicProcedure } from './router/index.js';
 export type { AppRouter } from './router/index.js';
