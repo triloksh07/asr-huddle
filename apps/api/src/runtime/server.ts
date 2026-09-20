@@ -2,9 +2,12 @@ import http from 'node:http';
 import cors from 'cors';
 import express from 'express';
 import { WebSocketServer } from 'ws';
+import { createExpressMiddleware } from '@trpc/server/adapters/express';
+import { appRouter } from '@repo/trpc';
 import type { ApiRuntime } from './composition-root.js';
 import { serializeAuthCookie } from '../auth/auth-cookie.js';
 import { RateLimitInfrastructureError } from '../security/rate-limiter.js';
+import { createApiTRPCContext } from '../trpc/runtime.js';
 
 export interface RunningServer {
   readonly server: http.Server;
@@ -69,6 +72,14 @@ export async function startServer(runtime: ApiRuntime): Promise<RunningServer> {
   app.get('/metrics', (_request, response) => {
     response.status(200).type('text/plain').send(runtime.metrics.prometheus(runtime.registry));
   });
+
+  app.use(
+    '/trpc',
+    createExpressMiddleware({
+      router: appRouter,
+      createContext: createApiTRPCContext(runtime),
+    })
+  );
 
   app.post('/v1/auth/register', async (request, response) => {
     if (

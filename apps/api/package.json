@@ -21,6 +21,8 @@
     "@repo/redis-models": "workspace:*",
     "@repo/sfu-contract": "workspace:*",
     "@repo/state-machine": "workspace:*",
+    "@repo/trpc": "workspace:*",
+    "@trpc/server": "^11.8.1",
     "@types/cors": "^2.8.19",
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
