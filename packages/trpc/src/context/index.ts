@@ -8,7 +8,7 @@
 // export type { TRPCContextFactory } from "./types.js";
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { AUTH_COOKIE_NAME, readAuthCookie } from './auth-cookie.js';
+import { AUTH_COOKIE_NAME, readAuthCookie } from './auth-cookie';
 import type {
   AuthenticatedUser,
   TRPCAuthService,
@@ -26,7 +26,7 @@ export type {
   TRPCRuntime,
 } from './types.js';
 
-export { AUTH_COOKIE_NAME, readAuthCookie } from './auth-cookie.js';
+export { AUTH_COOKIE_NAME, readAuthCookie } from './auth-cookie';
 
 function readBearerToken(request: IncomingMessage): string | null {
   const header = request.headers.authorization;
