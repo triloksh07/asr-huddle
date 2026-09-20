@@ -6,27 +6,23 @@
  * transport code from leaking application dependencies into the package root.
  */
 // export type { TRPCContextFactory } from "./types.js";
-
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { AUTH_COOKIE_NAME, readAuthCookie } from './auth-cookie';
-import type {
-  AuthenticatedUser,
-  TRPCAuthService,
-  TRPCContext,
-  TRPCContextFactory,
-  TRPCRuntime,
-} from './types.js';
+import type { AuthenticatedUser, TRPCContext, TRPCContextFactory, TRPCRuntime } from './types.js';
 
 export type {
   AuthenticatedUser,
+  TRPCAuthCookieService,
+  TRPCAuthResult,
   TRPCAuthService,
   TRPCContext,
   TRPCContextFactory,
   TRPCContextOptions,
+  TRPCRateLimitConfig,
+  TRPCRateLimitDecision,
+  TRPCRateLimiter,
+  TRPCRoomControl,
   TRPCRuntime,
 } from './types.js';
-
-export { AUTH_COOKIE_NAME, readAuthCookie } from './auth-cookie';
 
 function readBearerToken(request: IncomingMessage): string | null {
   const header = request.headers.authorization;
@@ -36,12 +32,12 @@ function readBearerToken(request: IncomingMessage): string | null {
   return token.length > 0 ? token : null;
 }
 
-function readAccessToken(request: IncomingMessage): string | null {
-  return readBearerToken(request) ?? readAuthCookie(request);
+function readAccessToken(runtime: TRPCRuntime, request: IncomingMessage): string | null {
+  return readBearerToken(request) ?? runtime.authCookie.read(request);
 }
 
 function authenticate(runtime: TRPCRuntime, request: IncomingMessage): AuthenticatedUser | null {
-  const token = readAccessToken(request);
+  const token = readAccessToken(runtime, request);
   if (!token) return null;
 
   try {
