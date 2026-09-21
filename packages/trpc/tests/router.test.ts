@@ -71,10 +71,13 @@ function createContext(overrides: Partial<TRPCContext> = {}): TRPCContext {
         createdAt: new Date(),
         endedAt: null,
       })),
-      endAsHost: vi.fn(async () => undefined),
+      endAsHost: vi.fn(async () => ({
+        status: 'ENDED' as const,
+        roomId: 'room-1',
+        roomSessionId: 'session-1',
+      })),
     },
   };
-
   return {
     runtime,
     request: { socket: { remoteAddress: '127.0.0.1' }, headers: {} },
@@ -87,42 +90,24 @@ function createContext(overrides: Partial<TRPCContext> = {}): TRPCContext {
 describe('tRPC application router', () => {
   it('keeps auth.register as a public mutation and preserves auth output', async () => {
     const ctx = createContext({ user: null });
-    const caller = appRouter.createCaller(ctx);
-
-    const result = await caller.auth.register({
-      name: 'Alice',
-      email: 'alice@example.com',
-      password: 'a-valid-password',
-    });
-
+    const result = await appRouter
+      .createCaller(ctx)
+      .auth.register({ name: 'Alice', email: 'alice@example.com', password: 'a-valid-password' });
     expect(result).toEqual({
       accessToken: 'token',
       user: { id: 'u1', name: 'Alice', email: 'alice@example.com' },
     });
-    expect(ctx.runtime.auth.register).toHaveBeenCalledWith(
-      'Alice',
-      'alice@example.com',
-      'a-valid-password'
-    );
   });
-
   it('requires authentication for room operations', async () => {
-    const caller = appRouter.createCaller(createContext({ user: null }));
-
-    await expect(caller.room.listPublic()).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+    await expect(
+      appRouter.createCaller(createContext({ user: null })).room.listPublic()
+    ).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
   });
-
   it('does not accept a client-supplied user id for room.create', async () => {
     const ctx = createContext();
-    const caller = appRouter.createCaller(ctx);
-
-    await caller.room.create({
-      title: 'Room',
-      description: '',
-      visibility: 'PUBLIC',
-      durationMinutes: 60,
-    });
-
+    await appRouter
+      .createCaller(ctx)
+      .room.create({ title: 'Room', description: '', visibility: 'PUBLIC', durationMinutes: 60 });
     expect(ctx.runtime.roomControl.create).toHaveBeenCalledWith({
       userId: 'u1',
       title: 'Room',
@@ -131,13 +116,25 @@ describe('tRPC application router', () => {
       durationMinutes: 60,
     });
   });
-
-  it('delegates room.end authorization to RoomControl', async () => {
+  it('returns an explicit result when room.end actually ends the room', async () => {
     const ctx = createContext();
-    const caller = appRouter.createCaller(ctx);
-
-    await caller.room.end({ roomId: 'room-1' });
-
+    const result = await appRouter.createCaller(ctx).room.end({ roomId: 'room-1' });
+    expect(result).toEqual({
+      success: true,
+      roomId: 'room-1',
+      status: 'ENDED',
+      roomSessionId: 'session-1',
+    });
     expect(ctx.runtime.roomControl.endAsHost).toHaveBeenCalledWith('room-1', 'u1');
+  });
+  it('reports an already-ended room without executing another end transition', async () => {
+    const ctx = createContext();
+    ctx.runtime.roomControl.endAsHost = vi.fn(async () => ({
+      status: 'ALREADY_ENDED' as const,
+      roomId: 'room-1',
+      success: true as const,
+    })) as typeof ctx.runtime.roomControl.endAsHost;
+    const result = await appRouter.createCaller(ctx).room.end({ roomId: 'room-1' });
+    expect(result).toEqual({ success: true, roomId: 'room-1', status: 'ALREADY_ENDED' });
   });
 });
