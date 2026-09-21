@@ -19,7 +19,7 @@
   "dependencies": {
     "@repo/application": "workspace:*",
     "@repo/domain": "workspace:*",
-    "drizzle-orm": "^0.33.0",
+    "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.4"
   },
   "devDependencies": {
