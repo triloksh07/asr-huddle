@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { CreateRoomOutput, RoomListOutput, RoomState } from '../schemas/room.js';
 
 export interface AuthenticatedUser {
   readonly id: string;
@@ -19,6 +20,10 @@ export interface TRPCAuthService {
   authenticate(token: string): string;
 }
 
+/**
+ * Transport-facing boundary for the authoritative API auth-cookie helpers.
+ * The implementation remains in apps/api; @repo/trpc does not duplicate it.
+ */
 export interface TRPCAuthCookieService {
   read(request: IncomingMessage): string | null;
   serialize(token: string, maxAgeSeconds: number, secure: boolean): string;
@@ -46,6 +51,9 @@ export interface TRPCRateLimitConfig {
   readonly roomCreateWindowMs: number;
 }
 
+/**
+ * Transport-facing application capability.
+ */
 export interface TRPCRoomControl {
   create(command: {
     readonly userId: string;
@@ -53,9 +61,9 @@ export interface TRPCRoomControl {
     readonly description: string;
     readonly visibility: 'PUBLIC' | 'LINK_ONLY';
     readonly durationMinutes: 60 | 120 | 300;
-  }): Promise<unknown>;
-  listPublic(): Promise<unknown>;
-  get(roomId: string): Promise<unknown>;
+  }): Promise<CreateRoomOutput>;
+  listPublic(): Promise<RoomListOutput>;
+  get(roomId: string): Promise<RoomState>;
   endAsHost(roomId: string, userId: string): Promise<void>;
 }
 
@@ -63,6 +71,10 @@ export interface TRPCLogger {
   error(event: string, fields?: Record<string, unknown>): void;
 }
 
+/**
+ * Capabilities supplied by the API composition root to the transport layer.
+ * This is deliberately structural: @repo/trpc never imports apps/api.
+ */
 export interface TRPCRuntime {
   readonly auth: TRPCAuthService;
   readonly authCookie: TRPCAuthCookieService;

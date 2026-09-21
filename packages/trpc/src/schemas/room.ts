@@ -45,3 +45,6 @@ export const roomListOutputSchema = z.array(roomStateSchema);
 
 export type CreateRoomInput = z.infer<typeof createRoomInputSchema>;
 export type RoomIdInput = z.infer<typeof roomIdInputSchema>;
+export type RoomState = z.infer<typeof roomStateSchema>;
+export type CreateRoomOutput = z.infer<typeof createRoomOutputSchema>;
+export type RoomListOutput = z.infer<typeof roomListOutputSchema>;

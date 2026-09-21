@@ -23,4 +23,10 @@ export {
 } from './room.js';
 
 export type { AuthResult, LoginInput, RegisterInput } from './auth.js';
-export type { CreateRoomInput, RoomIdInput } from './room.js';
+export type {
+  CreateRoomInput,
+  RoomIdInput,
+  RoomState,
+  CreateRoomOutput,
+  RoomListOutput,
+} from './room.js';
