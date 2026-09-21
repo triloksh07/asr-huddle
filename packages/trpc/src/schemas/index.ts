@@ -17,6 +17,7 @@ export {
 export {
   createRoomInputSchema,
   createRoomOutputSchema,
+  roomEndOutputSchema,
   roomIdInputSchema,
   roomListOutputSchema,
   roomStateOutputSchema,
@@ -29,4 +30,5 @@ export type {
   RoomState,
   CreateRoomOutput,
   RoomListOutput,
+  RoomEndOutput,
 } from './room.js';

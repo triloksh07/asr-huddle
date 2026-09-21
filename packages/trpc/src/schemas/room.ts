@@ -30,9 +30,7 @@ export const createRoomInputSchema = z.object({
   durationMinutes: roomDurationMinutesSchema,
 });
 
-export const roomIdInputSchema = z.object({
-  roomId: roomIdSchema,
-});
+export const roomIdInputSchema = z.object({ roomId: roomIdSchema });
 
 export const roomStateOutputSchema = roomStateSchema;
 
@@ -43,8 +41,18 @@ export const createRoomOutputSchema = z.object({
 
 export const roomListOutputSchema = z.array(roomStateSchema);
 
+export const roomEndOutputSchema = z.discriminatedUnion('status', [
+  z.object({
+    success: z.literal(true),
+    roomId: roomIdSchema,
+    status: z.literal('ENDED'),
+    roomSessionId: z.string().min(1),
+  }),
+  z.object({ success: z.literal(true), roomId: roomIdSchema, status: z.literal('ALREADY_ENDED') }),
+]);
 export type CreateRoomInput = z.infer<typeof createRoomInputSchema>;
 export type RoomIdInput = z.infer<typeof roomIdInputSchema>;
 export type RoomState = z.infer<typeof roomStateSchema>;
 export type CreateRoomOutput = z.infer<typeof createRoomOutputSchema>;
 export type RoomListOutput = z.infer<typeof roomListOutputSchema>;
+export type RoomEndOutput = z.infer<typeof roomEndOutputSchema>;

@@ -1,7 +1,7 @@
 import { ApplicationError } from '../errors.js';
 import type { RoomRepository } from '../ports.js';
 import { CreateRoom, type CreateRoomCommand } from './create-room.js';
-import { EndRoom } from './end-room.js';
+import { EndRoom, type EndRoomResult } from './end-room.js';
 
 export class RoomControl {
   constructor(
@@ -20,10 +20,10 @@ export class RoomControl {
   listPublic() {
     return this.rooms.findActivePublic();
   }
-  async endAsHost(roomId: string, userId: string): Promise<void> {
+  async endAsHost(roomId: string, userId: string): Promise<EndRoomResult> {
     const room = await this.get(roomId);
     if (room.hostUserId !== userId)
       throw new ApplicationError('FORBIDDEN', 'Only the room host can end this room.');
-    await this.endRoom.execute({ roomId, reason: 'HOST_ENDED' });
+    return this.endRoom.execute({ roomId, reason: 'HOST_ENDED' });
   }
 }

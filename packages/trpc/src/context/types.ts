@@ -1,5 +1,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { CreateRoomOutput, RoomListOutput, RoomState } from '../schemas/room.js';
+import type {
+  CreateRoomOutput,
+  RoomEndOutput,
+  RoomListOutput,
+  RoomState,
+} from '../schemas/room.js';
 
 export interface AuthenticatedUser {
   readonly id: string;
@@ -7,11 +12,7 @@ export interface AuthenticatedUser {
 
 export interface TRPCAuthResult {
   readonly accessToken: string;
-  readonly user: {
-    readonly id: string;
-    readonly name: string;
-    readonly email: string;
-  };
+  readonly user: { readonly id: string; readonly name: string; readonly email: string };
 }
 
 export interface TRPCAuthService {
@@ -22,7 +23,6 @@ export interface TRPCAuthService {
 
 /**
  * Transport-facing boundary for the authoritative API auth-cookie helpers.
- * The implementation remains in apps/api; @repo/trpc does not duplicate it.
  */
 export interface TRPCAuthCookieService {
   read(request: IncomingMessage): string | null;
@@ -64,7 +64,7 @@ export interface TRPCRoomControl {
   }): Promise<CreateRoomOutput>;
   listPublic(): Promise<RoomListOutput>;
   get(roomId: string): Promise<RoomState>;
-  endAsHost(roomId: string, userId: string): Promise<void>;
+  endAsHost(roomId: string, userId: string): Promise<RoomEndOutput>;
 }
 
 export interface TRPCLogger {
@@ -73,7 +73,6 @@ export interface TRPCLogger {
 
 /**
  * Capabilities supplied by the API composition root to the transport layer.
- * This is deliberately structural: @repo/trpc never imports apps/api.
  */
 export interface TRPCRuntime {
   readonly auth: TRPCAuthService;

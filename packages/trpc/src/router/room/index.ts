@@ -1,8 +1,10 @@
 import { TRPCError } from '@trpc/server';
+import { mapTRPCError } from '../../errors/index.js';
 import { protectedProcedure } from '../../middleware/index.js';
 import {
   createRoomInputSchema,
   createRoomOutputSchema,
+  roomEndOutputSchema,
   roomIdInputSchema,
   roomListOutputSchema,
   roomStateOutputSchema,
@@ -30,7 +32,7 @@ export const roomRouter = {
         limit: ctx.runtime.config.rateLimits.roomCreateLimit,
         windowMs: ctx.runtime.config.rateLimits.roomCreateWindowMs,
       });
-
+      
       if (!decision.allowed) {
         applyRetryAfter(ctx.response, decision.retryAfterMs);
         throw new TRPCError({
@@ -38,7 +40,7 @@ export const roomRouter = {
           message: 'Too many requests. Please try again later.',
         });
       }
-
+      
       try {
         return await ctx.runtime.roomControl.create({
           userId: ctx.user.id,
@@ -83,20 +85,23 @@ export const roomRouter = {
       }
     }),
 
-  end: protectedProcedure.input(roomIdInputSchema).mutation(async ({ ctx, input }) => {
-    try {
-      await ctx.runtime.roomControl.endAsHost(input.roomId, ctx.user.id);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to end room.';
-      const code = message.includes('Only the room host') ? 'FORBIDDEN' : 'NOT_FOUND';
-
-      throw new TRPCError({
-        code,
-        message,
-        cause: error,
-      });
-    }
-
-    return undefined;
-  }),
+  end: protectedProcedure
+    .input(roomIdInputSchema)
+    .output(roomEndOutputSchema)
+    .mutation(async ({ ctx, input }) => {
+      try {
+        const result = await ctx.runtime.roomControl.endAsHost(input.roomId, ctx.user.id);
+        if (result.status === 'ENDED') {
+          return {
+            success: true as const,
+            roomId: result.roomId,
+            status: result.status,
+            roomSessionId: result.roomSessionId,
+          };
+        }
+        return { success: true as const, roomId: result.roomId, status: result.status };
+      } catch (error) {
+        throw mapTRPCError(error);
+      }
+    }),
 };
