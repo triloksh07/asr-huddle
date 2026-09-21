@@ -19,10 +19,6 @@ export interface TRPCAuthService {
   authenticate(token: string): string;
 }
 
-/**
- * Transport-facing boundary for the authoritative API auth-cookie helpers.
- * The implementation remains in apps/api; @repo/trpc does not duplicate it.
- */
 export interface TRPCAuthCookieService {
   read(request: IncomingMessage): string | null;
   serialize(token: string, maxAgeSeconds: number, secure: boolean): string;
@@ -63,10 +59,10 @@ export interface TRPCRoomControl {
   endAsHost(roomId: string, userId: string): Promise<void>;
 }
 
-/**
- * Capabilities supplied by the API composition root to the transport layer.
- * This is deliberately structural: @repo/trpc never imports apps/api.
- */
+export interface TRPCLogger {
+  error(event: string, fields?: Record<string, unknown>): void;
+}
+
 export interface TRPCRuntime {
   readonly auth: TRPCAuthService;
   readonly authCookie: TRPCAuthCookieService;
@@ -77,6 +73,7 @@ export interface TRPCRuntime {
     readonly rateLimits: TRPCRateLimitConfig;
   };
   readonly roomControl: TRPCRoomControl;
+  readonly logger?: TRPCLogger;
 }
 
 export interface TRPCContextOptions {

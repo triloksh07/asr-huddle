@@ -9,6 +9,7 @@ export type {
   TRPCContext,
   TRPCContextFactory,
   TRPCContextOptions,
+  TRPCLogger,
   TRPCRateLimitConfig,
   TRPCRateLimitDecision,
   TRPCRateLimiter,

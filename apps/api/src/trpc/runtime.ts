@@ -23,6 +23,7 @@ export function toTRPCRuntime(runtime: ApiRuntime): TRPCRuntime {
       },
     },
     roomControl: runtime.roomControl,
+    logger: runtime.logger,
   };
 }
 
