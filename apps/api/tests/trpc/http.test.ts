@@ -34,8 +34,11 @@ function createRuntime() {
       }),
     },
     authCookie: {
-      read: vi.fn(() => null),
+      read: vi.fn((request: http.IncomingMessage) =>
+        request.headers.cookie === 'asr_huddle_access_token=token' ? 'token' : null
+      ),
       serialize: vi.fn(() => 'asr_huddle_access_token=token; Path=/'),
+      clear: vi.fn(() => 'asr_huddle_access_token=; Path=/; Max-Age=0'),
     },
     rateLimiter: {
       consume: vi.fn(async () => ({ allowed: true, retryAfterMs: 0 })),
@@ -83,39 +86,43 @@ function createRuntime() {
 async function requestJson(
   server: http.Server,
   path: string,
-  options: { method?: string; body?: unknown; authorization?: string } = {}
+  options: { method?: string; body?: unknown; authorization?: string; cookie?: string } = {}
 ) {
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('server address unavailable');
 
-  return await new Promise<{ status: number; body: any }>((resolve, reject) => {
-    const req = http.request(
-      {
-        host: '127.0.0.1',
-        port: address.port,
-        path,
-        method: options.method ?? 'GET',
-        headers: {
-          'content-type': 'application/json',
-          ...(options.authorization ? { authorization: options.authorization } : {}),
+  return await new Promise<{ status: number; body: any; headers: http.IncomingHttpHeaders }>(
+    (resolve, reject) => {
+      const req = http.request(
+        {
+          host: '127.0.0.1',
+          port: address.port,
+          path,
+          method: options.method ?? 'GET',
+          headers: {
+            'content-type': 'application/json',
+            ...(options.authorization ? { authorization: options.authorization } : {}),
+            ...(options.cookie ? { cookie: options.cookie } : {}),
+          },
         },
-      },
-      res => {
-        let data = '';
-        res.setEncoding('utf8');
-        res.on('data', chunk => (data += chunk));
-        res.on('end', () => {
-          resolve({
-            status: res.statusCode ?? 0,
-            body: data ? JSON.parse(data) : undefined,
+        res => {
+          let data = '';
+          res.setEncoding('utf8');
+          res.on('data', chunk => (data += chunk));
+          res.on('end', () => {
+            resolve({
+              status: res.statusCode ?? 0,
+              body: data ? JSON.parse(data) : undefined,
+              headers: res.headers,
+            });
           });
-        });
-      }
-    );
-    req.on('error', reject);
-    if (options.body !== undefined) req.write(JSON.stringify(options.body));
-    req.end();
-  });
+        }
+      );
+      req.on('error', reject);
+      if (options.body !== undefined) req.write(JSON.stringify(options.body));
+      req.end();
+    }
+  );
 }
 
 async function createTestServer() {
@@ -136,7 +143,7 @@ async function createTestServer() {
 }
 
 describe('tRPC HTTP adapter', () => {
-  it('serves a public auth mutation through the real HTTP adapter', async () => {
+  it('serves a public auth mutation without exposing the access token', async () => {
     const { server, runtime } = await createTestServer();
 
     try {
@@ -150,7 +157,10 @@ describe('tRPC HTTP adapter', () => {
       });
 
       expect(response.status).toBe(200);
-      expect(response.body.result.data.user.id).toBe('u1');
+      expect(response.body.result.data).toEqual({
+        user: { id: 'u1', name: 'Alice', email: 'alice@example.com' },
+      });
+      expect(response.body.result.data).not.toHaveProperty('accessToken');
       expect(runtime.auth.register).toHaveBeenCalled();
     } finally {
       await new Promise<void>((resolve, reject) =>
@@ -173,6 +183,24 @@ describe('tRPC HTTP adapter', () => {
     }
   });
 
+  it('accepts cookie authentication for protected procedures', async () => {
+    const { server, runtime } = await createTestServer();
+
+    try {
+      const response = await requestJson(server, '/trpc/room.listPublic', {
+        cookie: 'asr_huddle_access_token=token',
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.result.data).toEqual([]);
+      expect(runtime.auth.authenticate).toHaveBeenCalledWith('token');
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close(error => (error ? reject(error) : resolve()))
+      );
+    }
+  });
+
   it('accepts the existing bearer-token authentication path', async () => {
     const { server, runtime } = await createTestServer();
 
@@ -184,6 +212,25 @@ describe('tRPC HTTP adapter', () => {
       expect(response.status).toBe(200);
       expect(response.body.result.data).toEqual([]);
       expect(runtime.auth.authenticate).toHaveBeenCalledWith('token');
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close(error => (error ? reject(error) : resolve()))
+      );
+    }
+  });
+
+  it('clears the authentication cookie through logout', async () => {
+    const { server, runtime } = await createTestServer();
+
+    try {
+      const response = await requestJson(server, '/trpc/auth.logout', { method: 'POST' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.result.data).toEqual({ success: true });
+      expect(response.headers['set-cookie']).toEqual([
+        'asr_huddle_access_token=; Path=/; Max-Age=0',
+      ]);
+      expect(runtime.authCookie.clear).toHaveBeenCalledWith(false);
     } finally {
       await new Promise<void>((resolve, reject) =>
         server.close(error => (error ? reject(error) : resolve()))

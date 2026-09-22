@@ -37,3 +37,15 @@ export function serializeAuthCookie(token: string, maxAgeSeconds: number, secure
     ...(secure ? ['Secure'] : []),
   ].join('; ');
 }
+
+export function clearAuthCookie(secure: boolean): string {
+  return [
+    `${AUTH_COOKIE_NAME}=`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    'Max-Age=0',
+    'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+    ...(secure ? ['Secure'] : []),
+  ].join('; ');
+}

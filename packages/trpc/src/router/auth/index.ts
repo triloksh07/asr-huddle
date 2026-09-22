@@ -1,5 +1,10 @@
 import { TRPCError } from '@trpc/server';
-import { authResultSchema, loginInputSchema, registerInputSchema } from '../../schemas/index.js';
+import {
+  authLogoutResultSchema,
+  authResultSchema,
+  loginInputSchema,
+  registerInputSchema,
+} from '../../schemas/index.js';
 import { publicProcedure } from '../../middleware/index.js';
 
 function getRateLimitIdentifier(request: {
@@ -48,7 +53,7 @@ export const authRouter = {
           )
         );
 
-        return result;
+        return { user: result.user };
       } catch (error) {
         throw new TRPCError({
           code: 'CONFLICT',
@@ -91,7 +96,7 @@ export const authRouter = {
           )
         );
 
-        return result;
+        return { user: result.user };
       } catch (error) {
         throw new TRPCError({
           code: 'UNAUTHORIZED',
@@ -100,4 +105,13 @@ export const authRouter = {
         });
       }
     }),
+
+  logout: publicProcedure.output(authLogoutResultSchema).mutation(({ ctx }) => {
+    ctx.response.setHeader(
+      'Set-Cookie',
+      ctx.runtime.authCookie.clear(ctx.runtime.config.authMode === 'production')
+    );
+
+    return { success: true as const };
+  }),
 };

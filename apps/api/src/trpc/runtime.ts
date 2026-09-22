@@ -1,6 +1,6 @@
 import { createTRPCContext, type TRPCRuntime } from '@repo/trpc';
 import type { ApiRuntime } from '../runtime/composition-root.js';
-import { readAuthCookie, serializeAuthCookie } from '../auth/auth-cookie.js';
+import { clearAuthCookie, readAuthCookie, serializeAuthCookie } from '../auth/auth-cookie.js';
 
 export function toTRPCRuntime(runtime: ApiRuntime): TRPCRuntime {
   return {
@@ -8,6 +8,7 @@ export function toTRPCRuntime(runtime: ApiRuntime): TRPCRuntime {
     authCookie: {
       read: readAuthCookie,
       serialize: serializeAuthCookie,
+      clear: secure => clearAuthCookie(secure),
     },
     rateLimiter: runtime.rateLimiter,
     config: {

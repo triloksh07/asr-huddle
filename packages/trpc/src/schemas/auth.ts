@@ -19,8 +19,12 @@ export const authenticatedUserSchema = z.object({
 });
 
 export const authResultSchema = z.object({
-  accessToken: z.string().min(1),
+  // accessToken: z.string().min(1),
   user: authenticatedUserSchema,
+});
+
+export const authLogoutResultSchema = z.object({
+  success: z.literal(true),
 });
 
 export type RegisterInput = z.infer<typeof registerInputSchema>;

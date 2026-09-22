@@ -25,15 +25,29 @@ export class RejectingRealtimeAuthenticator implements RealtimeAuthenticator {
  * Production authentication must provide a real RealtimeAuthenticator.
  */
 export class DevelopmentQueryAuthenticator implements RealtimeAuthenticator {
-  constructor(private readonly users: UserRepository) {}
+  constructor(
+    private readonly users: UserRepository,
+    private readonly jwt: JwtService
+  ) {}
 
   async authenticate(request: unknown): Promise<UserId> {
     const incoming = request as IncomingMessage;
+    const cookieToken = readAuthCookie(incoming);
+
+    if (cookieToken) {
+      const userId = this.jwt.verify(cookieToken);
+      const user = await this.users.findById(userId);
+      if (!user) {
+        throw new Error('Authenticated user was not found.');
+      }
+      return user.id as UserId;
+    }
+
     const url = new URL(incoming.url ?? '/', 'ws://localhost');
     const value = url.searchParams.get('userId');
 
     if (!value) {
-      throw new Error('Authentication requires ?userId=...');
+      throw new Error('Authentication requires a valid auth cookie or ?userId=...');
     }
 
     const user = await this.users.findById(value);

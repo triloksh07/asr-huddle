@@ -20,6 +20,7 @@ function createContext(overrides: Partial<TRPCContext> = {}): TRPCContext {
     authCookie: {
       read: vi.fn(() => null),
       serialize: vi.fn(() => 'asr_huddle_access_token=token; Path=/'),
+      clear: vi.fn(() => 'asr_huddle_access_token=; Path=/; Max-Age=0'),
     },
     rateLimiter: {
       consume: vi.fn(async () => ({ allowed: true, retryAfterMs: 0 })),
@@ -88,15 +89,21 @@ function createContext(overrides: Partial<TRPCContext> = {}): TRPCContext {
 }
 
 describe('tRPC application router', () => {
-  it('keeps auth.register as a public mutation and preserves auth output', async () => {
+  it('keeps auth.register as a public mutation and does not expose the access token', async () => {
     const ctx = createContext({ user: null });
     const result = await appRouter
       .createCaller(ctx)
       .auth.register({ name: 'Alice', email: 'alice@example.com', password: 'a-valid-password' });
     expect(result).toEqual({
-      accessToken: 'token',
       user: { id: 'u1', name: 'Alice', email: 'alice@example.com' },
     });
+    expect(result).not.toHaveProperty('accessToken');
+  });
+  it('clears the auth cookie on logout', async () => {
+    const ctx = createContext({ user: null });
+    const result = await appRouter.createCaller(ctx).auth.logout();
+    expect(result).toEqual({ success: true });
+    expect(ctx.runtime.authCookie.clear).toHaveBeenCalledWith(false);
   });
   it('requires authentication for room operations', async () => {
     await expect(

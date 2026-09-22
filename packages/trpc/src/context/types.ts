@@ -27,6 +27,7 @@ export interface TRPCAuthService {
 export interface TRPCAuthCookieService {
   read(request: IncomingMessage): string | null;
   serialize(token: string, maxAgeSeconds: number, secure: boolean): string;
+  clear(secure: boolean): string;
 }
 
 export interface TRPCRateLimitDecision {

@@ -5,7 +5,7 @@ import { WebSocketServer } from 'ws';
 import { createExpressMiddleware } from '@trpc/server/adapters/express';
 import { appRouter } from '@repo/trpc';
 import type { ApiRuntime } from './composition-root.js';
-import { serializeAuthCookie } from '../auth/auth-cookie.js';
+import { clearAuthCookie, readAuthCookie, serializeAuthCookie } from '../auth/auth-cookie.js';
 import { RateLimitInfrastructureError } from '../security/rate-limiter.js';
 import { createApiTRPCContext } from '../trpc/runtime.js';
 
@@ -43,7 +43,9 @@ async function enforceHttpRateLimit(
 
 export async function startServer(runtime: ApiRuntime): Promise<RunningServer> {
   const app = express();
-  app.use(cors()); // only for development test, must be replaced with better config in production
+
+  // TODO: only for development test, must be replaced with better config in production
+  app.use(cors({ origin: true, credentials: true }));
   app.disable('x-powered-by');
   app.use(express.json());
 
@@ -122,7 +124,7 @@ export async function startServer(runtime: ApiRuntime): Promise<RunningServer> {
             runtime.config.authMode === 'production'
           )
         )
-        .json(result);
+        .json({ user: result.user });
     } catch (error) {
       response
         .status(409)
@@ -160,17 +162,29 @@ export async function startServer(runtime: ApiRuntime): Promise<RunningServer> {
             runtime.config.authMode === 'production'
           )
         )
-        .json(result);
+        .json({ user: result.user });
     } catch {
       response.status(401).json({ error: 'Invalid email or password.' });
     }
   });
 
+  app.post('/v1/auth/logout', (_request, response) => {
+    response
+      .status(204)
+      .setHeader('Set-Cookie', clearAuthCookie(runtime.config.authMode === 'production'))
+      .end();
+  });
+
   const authenticatedUserId = (request: express.Request): string | null => {
+    const cookieToken = readAuthCookie(request);
     const header = request.header('authorization');
-    if (!header?.startsWith('Bearer ')) return null;
+    const bearerToken = header?.startsWith('Bearer ')
+      ? header.slice('Bearer '.length).trim()
+      : null;
+    const token = cookieToken ?? (bearerToken || null);
+    if (!token) return null;
     try {
-      return runtime.auth.authenticate(header.slice(7));
+      return runtime.auth.authenticate(token);
     } catch {
       return null;
     }

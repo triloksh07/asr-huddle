@@ -276,7 +276,7 @@ export async function createApiRuntime(config: ApiConfig = loadConfig()): Promis
   await fanout.start();
   const authenticator =
     config.authMode === 'development'
-      ? new DevelopmentQueryAuthenticator(users)
+      ? new DevelopmentQueryAuthenticator(users, jwt)
       : new JwtRealtimeAuthenticator(users, jwt);
   const realtime = createRealtimeRuntime(
     router,

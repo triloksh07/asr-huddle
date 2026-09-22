@@ -5,8 +5,7 @@ const api = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
 type User = { id: string; name?: string; email?: string };
 
-let token = localStorage.getItem('asr.accessToken') ?? '';
-let user = JSON.parse(localStorage.getItem('asr.user') ?? 'null') as User | null;
+let user: User | null = null;
 let client: RuntimeAudioClient | undefined;
 let currentRoomId = '';
 
@@ -42,7 +41,7 @@ function log(message: string) {
 }
 
 function renderAuth() {
-  const signedIn = !!token && !!user;
+  const signedIn = !!user;
   auth.classList.toggle('hidden', signedIn);
   session.classList.toggle('hidden', !signedIn);
   if (signedIn)
@@ -58,9 +57,9 @@ function updateMediaState() {
 async function requestJson(path: string, init: RequestInit = {}) {
   const response = await fetch(`${api}${path}`, {
     ...init,
+    credentials: 'include',
     headers: {
       'content-type': 'application/json',
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...(init.headers ?? {}),
     },
   });
@@ -102,11 +101,8 @@ async function login() {
   }
 }
 
-function setSession(data: any) {
-  token = data.accessToken;
+function setSession(data: { user: User }) {
   user = data.user;
-  localStorage.setItem('asr.accessToken', token);
-  localStorage.setItem('asr.user', JSON.stringify(user));
   renderAuth();
   log(`Authenticated userId=${user.id}`);
 }
@@ -140,6 +136,7 @@ async function joinRoom(roomId: string) {
 
     currentRoomId = roomId.trim();
     if (!currentRoomId) throw new Error('Room ID is required.');
+    if (!user) throw new Error('Sign in first.');
 
     wsState.textContent = 'connecting';
     roomState.textContent = 'joining';
@@ -149,11 +146,7 @@ async function joinRoom(roomId: string) {
     consumerState.textContent = '0';
     logEl.textContent = '';
 
-    const wsUrl =
-      `${api.replace(/^http/, 'ws')}/v1/ws` +
-      `?access_token=${encodeURIComponent(token)}` +
-      `&userId=${encodeURIComponent(user!.id)}`;
-
+    const wsUrl = `${api.replace(/^http/, 'ws')}/v1/ws`;
     const ws = new WebSocket(wsUrl);
 
     await new Promise<void>((resolve, reject) => {
@@ -185,7 +178,7 @@ async function joinRoom(roomId: string) {
     });
 
     wsState.textContent = 'connected';
-    log(`WebSocket connected userId=${user!.id}`);
+    log(`WebSocket connected userId=${user.id}`);
 
     client = new RuntimeAudioClient(
       ws,
@@ -333,12 +326,13 @@ $('leave').addEventListener('click', leaveRoom);
 
 $('logout').addEventListener('click', async () => {
   await closeClient();
-  token = '';
-  user = null;
-  localStorage.removeItem('asr.accessToken');
-  localStorage.removeItem('asr.user');
-  room.classList.add('hidden');
-  renderAuth();
+  try {
+    await requestJson('/v1/auth/logout', { method: 'POST' });
+  } finally {
+    user = null;
+    room.classList.add('hidden');
+    renderAuth();
+  }
 });
 
 renderAuth();

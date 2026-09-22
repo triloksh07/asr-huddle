@@ -9,6 +9,7 @@ export {
 
 export {
   authResultSchema,
+  authLogoutResultSchema,
   authenticatedUserSchema,
   loginInputSchema,
   registerInputSchema,
