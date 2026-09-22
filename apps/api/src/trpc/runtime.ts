@@ -23,6 +23,7 @@ export function toTRPCRuntime(runtime: ApiRuntime): TRPCRuntime {
       },
     },
     roomControl: runtime.roomControl,
+    // roomControl: runtime.roomControl as unknown as TRPCRuntime['roomControl'],
     logger: runtime.logger,
   };
 }
