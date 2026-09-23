@@ -9,6 +9,7 @@ import {
   roomListOutputSchema,
   roomStateOutputSchema,
 } from '../../schemas/index.js';
+import { toCreateRoomDto, toRoomDto, toRoomEndDto } from './mappers.js';
 
 function getRateLimitIdentifier(request: {
   socket?: { remoteAddress?: string | undefined };
@@ -32,7 +33,7 @@ export const roomRouter = {
         limit: ctx.runtime.config.rateLimits.roomCreateLimit,
         windowMs: ctx.runtime.config.rateLimits.roomCreateWindowMs,
       });
-      
+
       if (!decision.allowed) {
         applyRetryAfter(ctx.response, decision.retryAfterMs);
         throw new TRPCError({
@@ -40,15 +41,16 @@ export const roomRouter = {
           message: 'Too many requests. Please try again later.',
         });
       }
-      
+
       try {
-        return await ctx.runtime.roomControl.create({
+        const result = await ctx.runtime.roomControl.create({
           userId: ctx.user.id,
           title: input.title,
           description: input.description,
           visibility: input.visibility,
           durationMinutes: input.durationMinutes,
         });
+        return toCreateRoomDto(result);
       } catch (error) {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
@@ -60,7 +62,8 @@ export const roomRouter = {
 
   listPublic: protectedProcedure.output(roomListOutputSchema).query(async ({ ctx }) => {
     try {
-      return await ctx.runtime.roomControl.listPublic();
+      const rooms = await ctx.runtime.roomControl.listPublic();
+      return rooms.map(toRoomDto);
     } catch (error) {
       throw new TRPCError({
         code: 'INTERNAL_SERVER_ERROR',
@@ -75,7 +78,8 @@ export const roomRouter = {
     .output(roomStateOutputSchema)
     .query(async ({ ctx, input }) => {
       try {
-        return await ctx.runtime.roomControl.get(input.roomId);
+        const room = await ctx.runtime.roomControl.get(input.roomId);
+        return toRoomDto(room);
       } catch (error) {
         throw new TRPCError({
           code: 'NOT_FOUND',
@@ -91,15 +95,7 @@ export const roomRouter = {
     .mutation(async ({ ctx, input }) => {
       try {
         const result = await ctx.runtime.roomControl.endAsHost(input.roomId, ctx.user.id);
-        if (result.status === 'ENDED') {
-          return {
-            success: true as const,
-            roomId: result.roomId,
-            status: result.status,
-            roomSessionId: result.roomSessionId,
-          };
-        }
-        return { success: true as const, roomId: result.roomId, status: result.status };
+        return toRoomEndDto(result);
       } catch (error) {
         throw mapTRPCError(error);
       }
