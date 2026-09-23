@@ -1,4 +1,5 @@
 import type { RoomEndOutput, RoomState } from '../../schemas/room.js';
+// type RoomDto = Omit<RoomState, 'endedAt'>;
 
 interface RoomLike {
   id: string;
@@ -27,7 +28,8 @@ interface CreateRoomResultLike {
   session: RoomSessionLike;
 }
 
-export function toRoomDto(room: RoomLike): RoomState {
+// export function toRoomDto(room: RoomLike): RoomState {
+export function toRoomDto(room: RoomLike) {
   return {
     id: room.id,
     hostUserId: room.hostUserId,
@@ -54,7 +56,10 @@ export function toRoomSessionDto(session: RoomSessionLike) {
 }
 
 export function toCreateRoomDto(result: CreateRoomResultLike) {
+  // const { endedAt: _endedAt, ...room } = toRoomDto(result.room);
+
   return {
+    // room,
     room: toRoomDto(result.room),
     session: toRoomSessionDto(result.session),
   };

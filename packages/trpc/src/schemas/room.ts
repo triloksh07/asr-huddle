@@ -23,6 +23,13 @@ const roomSessionDtoSchema = z.object({
   endedAt: z.date().nullable(),
 });
 
+const createRoomDtoSchema = z.object({
+  room: roomDtoSchema,
+  session: roomSessionDtoSchema,
+  // room: roomDtoSchema.omit({ endedAt: true }),
+  // session: roomSessionDtoSchema.omit({ expiryWarningIssuedAt: true, endedAt: true }),
+});
+
 export const createRoomInputSchema = z.object({
   title: z.string().trim().min(1).max(100),
   description: z.string().trim().max(500),
@@ -34,10 +41,7 @@ export const roomIdInputSchema = z.object({ roomId: roomIdSchema });
 
 export const roomStateOutputSchema = roomDtoSchema;
 
-export const createRoomOutputSchema = z.object({
-  room: roomDtoSchema,
-  session: roomSessionDtoSchema,
-});
+export const createRoomOutputSchema = createRoomDtoSchema;
 
 export const roomListOutputSchema = z.array(roomDtoSchema);
 
